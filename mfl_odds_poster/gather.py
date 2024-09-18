@@ -1,12 +1,14 @@
 import argparse
 import json
 import os
-import pprint
 import pytz
 import requests
+from dateutil.parser import isoparse
 from datetime import datetime, timedelta
 
-DATE_FORMAT = "%Y-%m-%dT%H:%M:%S"
+DATE_FORMAT_INPUT = "%Y-%m-%dT%H:%M:%SZ"
+DATE_FORMAT_SECONDARY = "%Y-%m-%dT%H:%M:%S"
+PT_TIME_ZOME = pytz.timezone('US/Pacific')
 
 def fetch_game_data(source):
   if source.startswith("http"):
@@ -39,36 +41,40 @@ def adjust_times_zones(games):
     game["bookmakers"][0]["markets"][1]["last_update"] = convert_utc_to_pacific_time(game["bookmakers"][0]["markets"][1]["last_update"])
   return games
 
+def get_week_start_end(date, week_start=2):
+    """
+    Gets the start and end dates of the current week based on a specified week start.
+
+    Args:
+        week_start (int, optional): The day of the week to consider as the week start (0=Monday, 1=Tuesday, ... 6=Sunday).
+            Default is 2 (Wednesday).
+
+    Returns:
+        tuple: A tuple containing the start and end dates as datetime.date objects.
+    """
+    while date.weekday() != week_start:
+        date -= timedelta(days=1)
+
+    week_start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end_date = (week_start_date + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999999)
+    
+    return week_start_date, week_end_date
+
 def transform_game_data(games):
-  start_of_week, end_of_week = get_current_week_range()
-  
-#   print("commence_time: ", datetime.strptime(games[0]["commence_time"], DATE_FORMAT))
-#   print("start_time: ", datetime.strptime(start_of_week, "%Y-%m-%d"))
-#   print("end_time: ", datetime.strptime(end_of_week, "%Y-%m-%d"))
+  start_of_week, end_of_week = get_week_start_end(datetime.now(tz=PT_TIME_ZOME), 2)
 
   # Filter games within the current week
   filtered_games = [
       game
       for game in games
-      if datetime.strptime(game["commence_time"], DATE_FORMAT) >= datetime.strptime(start_of_week, "%Y-%m-%d") and
-      datetime.strptime(game["commence_time"], DATE_FORMAT) <= datetime.strptime(end_of_week, "%Y-%m-%d")
+      if isoparse(game["commence_time"]) >= start_of_week and isoparse(game["commence_time"]) <= end_of_week
   ]
   
-  games_sorted = sorted(filtered_games, key=lambda x: datetime.strptime(x['commence_time'], DATE_FORMAT))
-    
+  sorted_games = sorted(filtered_games, key=lambda x: isoparse(x['commence_time']))
+
   formatted_games = []
   
-  current_day = None
-  
-  for game in games_sorted:
-    # pprint.pprint(game)
-    game_day = datetime.strptime(game["commence_time"], DATE_FORMAT).strftime("%A")  # Get day of the week
-    print(f"game_day: {game_day}")
-    print(f"current_day: {current_day}")
-    if game_day != current_day:  # Print day heading if day changes
-      current_day = game_day
-      print(f"\n** {current_day.upper()} **")
-
+  for game in sorted_games:
     spreads = game["bookmakers"][0]["markets"][0]["outcomes"]
     totals = game["bookmakers"][0]["markets"][1]["outcomes"][0]["point"]
 
@@ -80,6 +86,7 @@ def transform_game_data(games):
 
     # Append formatted game info
     formatted_games.append({
+      "commence_time": game["commence_time"],
       "favored_team": negative_spread_team,
       "away_team": game["away_team"],
       "home_team": game["home_team"],
@@ -87,8 +94,17 @@ def transform_game_data(games):
       "totals_point": adjust_float(totals)
     })
 
-  # Output the result in the desired format
+  return formatted_games
+
+def print_formatted_games(formatted_games):
+  current_day = None
+  
   for game in formatted_games:
+    game_day = isoparse(game["commence_time"]).strftime("%A")  # Get day of the week
+    if game_day != current_day:  # Print day heading if day changes
+      current_day = game_day
+      print(f"\n*** {current_day.upper()} ***\n")
+
     if game['favored_team'] == game['away_team']:
       print(f"{game['away_team']} | {game['point_spread']} | {game['totals_point']}")
       print(f"{game['home_team']}\n")
@@ -105,23 +121,9 @@ def adjust_float(num):
   else:
     return num
 
-def get_current_week_range():
-  """
-  This function defines the current week as Wednesday to Tuesday.
-  """
-  return "2024-09-18", "2024-09-24"
-#   today = datetime.today()
-#   todays_day = today.weekday()
-#   print("todays_day: ", todays_day)
-#   # Get the wednesday of the current week
-#   start_of_week = today - timedelta(days = 7 - todays_day)
-#   # Get the tuesday of the next week (current week + 6 days)
-#   end_of_week = start_of_week + timedelta(days = 6)
-#   print("start_of_week: ", start_of_week)
-#   print("end_of_week: ", end_of_week)
-#   return start_of_week.strftime("%Y-%m-%d"), end_of_week.strftime("%Y-%m-%d")
 
 def main():
+  # https://the-odds-api.com/liveapi/guides/v4/#overview
   API_BASE_URL="https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/"
   API_PARAMETERS="?regions=us&markets=spreads,totals&bookmakers=draftkings&apiKey="
   ENV_VAR_API_KEY_THE_ODDS="API_KEY_THE_ODDS"
@@ -140,7 +142,8 @@ def main():
     games_data = fetch_game_data(API_BASE_URL + API_PARAMETERS + apiKey)
 
   adjust_times_zones(games_data)
-  transform_game_data(games_data)
+  transformed_game_data = transform_game_data(games_data)
+  print_formatted_games(transformed_game_data)
 
 if __name__ == "__main__":
   main()

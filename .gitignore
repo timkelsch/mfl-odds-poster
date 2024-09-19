@@ -1,3 +1,9 @@
+.git-backup
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
 # direnv
 .envrc
 

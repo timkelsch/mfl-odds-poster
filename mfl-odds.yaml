@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Lambda function to pull game odds and display them in a digestable format
+
+Parameters:
+  EcrImageUri:
+    Description: ECR Image URI
+    Type: String
+    Default: 287140326780.dkr.ecr.us-east-1.amazonaws.com/mfl-odds:$LATEST
+
+Resources:
+  MflOddsFetcherFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt MflOddsFetcherFunctionIamRole.Arn
+      Code: 
+        ImageUri: !Ref EcrImageUri
+      PackageType: Image
+      Architectures:
+           - arm64
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          API_KEY_SECRET_ID: !GetAtt MflOddsFetcherApiKeySecret.Id
+
+  MflOddsFetcherFunctionIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  MflOddsFetcherFunctionIamRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - !Ref MflOddsFetcherFunctionIamRole
+      PolicyName: AccessSecret
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Sid: secretsManager
+          Effect: Allow
+          Action:
+            - secretsmanager:DescribeSecret
+            - secretsmanager:GetSecretValue
+          Resource: !Ref MflOddsFetcherApiKeySecret
+        - Sid: kms 
+          Effect: Allow
+          Action:
+          - 'kms:DescribeKey'
+          - 'kms:Encrypt'
+          - 'kms:Decrypt'
+          - 'kms:ReEncrypt*'
+          - 'kms:GenerateDataKey'
+          - 'kms:GenerateDataKeyWithoutPlaintext'
+          Resource: !GetAtt MflOddsFetcherKey.Arn
+
+  MflOddsFetcherScheduler:
+    Type: AWS::Events::Rule
+    Properties:
+      RoleArn: !GetAtt MflOddsFetcherFunctionIamRole.Arn
+      ScheduleExpression: "cron(0 18 ? * 4 *)"
+      State: ENABLED
+      Targets: [ !GetAtt MflOddsFetcherFunction.Arn ]
+
+  # LambdaPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     Action: lambda:invokeFunction
+  #     FunctionName: !GetAtt MflOddsFetcherFunction.Arn
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 
+  #         - "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${MflOddsFetcherApi}:*/*"
+  #         - MflOddsFetcherApi: !Ref MflOddsFetcherApi
+
+  MflOddsFetcherApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      KmsKeyId: !GetAtt MflOddsFetcherKey.Arn
+
+  MflOddsFetcherApiKeySecretResourcePolicy:
+    Type: AWS::SecretsManager::ResourcePolicy
+    Properties: 
+      BlockPublicPolicy: True
+      SecretId: !Ref MflOddsFetcherApiKeySecret
+      ResourcePolicy:
+        Version: '2012-10-17'
+        Statement:
+        - Resource: "*"
+          Action: secretsmanager:*
+          Effect: Allow
+          Principal:
+            AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+        - Resource: "*"
+          Action:
+            - secretsmanager:DescribeSecret
+            - secretsmanager:Get*
+            - secretsmanager:List*
+          Effect: Allow
+          Principal:
+            AWS: !GetAtt MflOddsFetcherFunctionIamRole.Arn
+
+  MflOddsFetcherKey:
+    Type: AWS::KMS::Key
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      Enabled: True
+      EnableKeyRotation: True
+      MultiRegion: True
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow use of the key
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt MflOddsFetcherFunctionIamRole.Arn
+            Action:
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey'
+              - 'kms:GenerateDataKeyWithoutPlaintext'
+            Resource: '*'
+
+  MflOddsPublicRepositry:
+    Type: AWS::ECR::PublicRepository
+    Properties:
+      RepositoryName: "mfl-odds"
+      RepositoryCatalogData:
+        UsageText: "This is a sample usage text."
+        AboutText: "This is a sample about text."
+        OperatingSystems:
+          - "Linux"
+          - "Windows"
+        Architectures:
+          - "x86"
+          - "ARM"
+        RepositoryDescription: "For the mfl-odds project"
+
+  PipelineUser:
+    Type: AWS::IAM::User
+    Properties:
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      UserName: GithubActionsPipelineUser
+
+Outputs:
+  MflOddsFetcherFunctionArn:
+    Value: !GetAtt MflOddsFetcherFunction.Arn
+    Export:
+      Name: MflOddsFetcherFunctionArn

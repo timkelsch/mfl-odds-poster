@@ -1,4 +1,5 @@
 .git-backup
+.build
 
 # CDK asset staging directory
 .cdk.staging

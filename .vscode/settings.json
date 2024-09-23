@@ -1,3 +1,7 @@
 {
-    "makefile.configureOnOpen": false
+    "makefile.configureOnOpen": false,
+    "python.analysis.autoImportCompletions": true,
+    "flake8.args": [
+        "--max-line-length=120"
+    ],
 }

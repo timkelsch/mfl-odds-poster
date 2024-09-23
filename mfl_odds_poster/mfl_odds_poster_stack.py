@@ -1,12 +1,12 @@
 from aws_solutions_constructs.aws_cloudfront_apigateway_lambda import CloudFrontToApiGatewayToLambda
 from aws_cdk import (
-  Fn,
-  aws_lambda as _lambda,
-  aws_apigateway as apigw,
-  aws_iam as iam,
-  aws_secretsmanager,
-  aws_kms,
-  Stack
+    Fn,
+    aws_lambda as _lambda,
+    aws_apigateway as apigw,
+    aws_iam as iam,
+    aws_secretsmanager,
+    aws_kms,
+    Stack
 )
 from constructs import Construct
 import os

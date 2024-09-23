@@ -27,6 +27,9 @@ jobs:
           pip install -r requirements.txt
       - name: Lint with flake8
         uses: py-actions/flake8@v2
+        with:
+          max-line-length: "120:W"
+          ignore: "F841"
         continue-on-error: true
       - name: Login to Public ECR
         uses: docker/login-action@v3

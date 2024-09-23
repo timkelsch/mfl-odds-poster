@@ -10,8 +10,6 @@ from get_secret_value import GetSecretWrapper
 from dateutil.parser import isoparse
 from datetime import datetime, timedelta
 
-DATE_FORMAT_INPUT = "%Y-%m-%dT%H:%M:%SZ"
-DATE_FORMAT_SECONDARY = "%Y-%m-%dT%H:%M:%S"
 PT_TIME_ZOME = pytz.timezone('US/Pacific')
 
 logging.basicConfig(level=logging.INFO)
@@ -23,8 +21,12 @@ def fetch_game_data(source):
         response.raise_for_status()  # Raise an exception for non-200 status codes
         return response.json()
     else:
-        with open(source, "r") as f:
-            return json.load(f)
+        try:
+            with open(source, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Error reading input file: {e}")
+            raise
 
 
 def convert_utc_to_pacific_time(utc_time_str):
@@ -186,12 +188,15 @@ def main():
     secret_arn = os.environ.get(ENV_VAR_SECRET_ARN)
     if secret_arn is None:
         raise KeyError(
-            f"Environment variable is not set: {ENV_VAR_SECRET_ARN}")
+            logging.error(f"Environment variable is not set: {ENV_VAR_SECRET_ARN}"))
 
     if args.source:
+        logging.info(f"Using local file: {args.source}")
         games_data = fetch_game_data(args.source)
     else:
-        games_data = fetch_game_data(API_BASE_URL + API_PARAMETERS + get_secret(secret_arn))
+        url = API_BASE_URL + API_PARAMETERS + get_secret(secret_arn)
+        logging.info(f"Using API URL: {API_BASE_URL + API_PARAMETERS}")
+        games_data = fetch_game_data(url)
 
     adjust_times_zones(games_data)
     transformed_game_data = transform_game_data(games_data)

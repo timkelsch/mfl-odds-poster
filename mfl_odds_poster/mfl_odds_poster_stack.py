@@ -1,13 +1,15 @@
-from aws_solutions_constructs.aws_cloudfront_apigateway_lambda import CloudFrontToApiGatewayToLambda
 from aws_cdk import (
-    Fn,
-    aws_lambda as _lambda,
     aws_apigateway as apigw,
+    aws_cloudfront as cloudfront,
     aws_iam as iam,
-    aws_secretsmanager,
-    aws_kms,
+    aws_kms as kms,
+    aws_lambda as _lambda,
+    aws_secretsmanager as asm,
+    CfnOutput,
+    Fn,
     Stack
 )
+from aws_solutions_constructs.aws_cloudfront_apigateway_lambda import CloudFrontToApiGatewayToLambda
 from constructs import Construct
 import os
 import subprocess
@@ -44,7 +46,7 @@ class MflOddsPosterStack(Stack):
             )
         )
 
-        mfl_odds_kms_key = aws_kms.CfnKey(
+        mfl_odds_kms_key = kms.CfnKey(
             self,
             "mflOddsKmsKey",
             bypass_policy_lockout_safety_check=False,
@@ -85,7 +87,7 @@ class MflOddsPosterStack(Stack):
             rotation_period_in_days=360,
         )
 
-        mfl_odds_secret = aws_secretsmanager.CfnSecret(
+        mfl_odds_secret = asm.CfnSecret(
             self,
             "mflOdds-ApiKey",
             description="api key for the-odds-api",
@@ -94,7 +96,7 @@ class MflOddsPosterStack(Stack):
             # secret_string='l12345bno1'  # placeholder - manually replace with real secret after deploy
         )
 
-        mfl_odds_secret_resource_policy = aws_secretsmanager.CfnResourcePolicy(
+        mfl_odds_secret_resource_policy = asm.CfnResourcePolicy(
             self,
             "mflOddsSecretResourcePolicy",
             block_public_policy=True,
@@ -123,7 +125,7 @@ class MflOddsPosterStack(Stack):
             secret_id=mfl_odds_secret.attr_id  # Required
         )
 
-        CloudFrontToApiGatewayToLambda(
+        cfnToAgwToLmb = CloudFrontToApiGatewayToLambda(
             self, 'CloudFrontApiGatewayToLambda',
             lambda_function_props=_lambda.FunctionProps(
                 runtime=_lambda.Runtime.PYTHON_3_11,
@@ -149,6 +151,10 @@ class MflOddsPosterStack(Stack):
                     authorization_type=apigw.AuthorizationType.NONE
                 )
             )
+        )
+
+        CfnOutput(self, 'CloudFrontDistributionDomainName',
+            value=cfnToAgwToLmb.cloud_front_web_distribution.domain_name  # distro.distribution_domain_name
         )
 
     def create_dependencies_layer(

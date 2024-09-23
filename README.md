@@ -1,13 +1,12 @@
-
 # Welcome to your CDK Python project!
 
 This is a blank project for CDK development with Python.
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
-This project is set up like a standard Python project.  The initialization
+This project is set up like a standard Python project. The initialization
 process also creates a virtualenv within this project, stored under the `.venv`
-directory.  To create the virtualenv it assumes that there is a `python3`
+directory. To create the virtualenv it assumes that there is a `python3`
 (or `python` for Windows) executable in your path with access to the `venv`
 package. If for any reason the automatic creation of the virtualenv fails,
 you can create the virtualenv manually.
@@ -17,6 +16,27 @@ To manually create a virtualenv on MacOS and Linux:
 ```
 $ python3 -m venv .venv
 ```
+
+# Notes on virtual environments
+
+This repo has two python environments - one for CDK and the other for the Python lambda.
+Currently, our requirements are that:
+
+- both CDK and the lambda function locally
+- the lambda functions on AWS with only the necessary modules installed
+
+As a result, we are running:
+
+- a single virtual env locally that uses root/requirements.txt to
+  specify modules for both CDK and the lambda.
+- a requirements.txt file in lambda directory that contains only the modules for the lambda
+
+In the future, if the benefits became worth the cost of implementation and ongoing overhead,
+we could have two virtual environments in the repo root directory - one for CDK and another for
+the lambda. This would require switching virtual envs whenever the dev switches focus from CDK
+to lambda and vice versa.
+
+# Env of Notes
 
 After the init process completes and the virtualenv is created, you can use the following
 step to activate your virtualenv.
@@ -49,10 +69,10 @@ command.
 
 ## Useful commands
 
- * `cdk ls`          list all stacks in the app
- * `cdk synth`       emits the synthesized CloudFormation template
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk docs`        open CDK documentation
+- `cdk ls` list all stacks in the app
+- `cdk synth` emits the synthesized CloudFormation template
+- `cdk deploy` deploy this stack to your default AWS account/region
+- `cdk diff` compare deployed stack with current state
+- `cdk docs` open CDK documentation
 
 Enjoy!

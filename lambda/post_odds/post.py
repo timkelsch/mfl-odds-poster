@@ -4,11 +4,11 @@ import logging
 import os
 import requests
 
-MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?XML=1"
+MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
 SUBSECRET_KEY = "the-odds-api-key"
 # checkov:skip=CKV_SECRET_6: not a secret
 ENV_VAR_SECRET_ARN = "SECRET_ARN"
-REGION = "us-east-1"
+MFL_USER_COOKIE_KEY = "MFL_USER_ID"
 # TODO: look this up instead of hard coding
 
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +31,7 @@ def get_secret(secret_name, subsecret_key):
         secret_string = response['SecretString']
 
         # Note: Secrets should not be logged.
-        secret_data = json.loads(secret)
+        secret_data = json.loads(secret_string)
         secret_value = secret_data[subsecret_key]
         return secret_value
     except Exception as e:
@@ -57,40 +57,51 @@ def get_env_var(var_name):
 def login():
     # Retrieve username and password from AWS Secrets Manager
     secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
-    username = get_secret(secret_arn, 'mfl_username')
+    username = get_secret(secret_arn, 'mfl-username')
     password = get_secret(secret_arn, 'mfl-password')
     
     # Prepare login request
     url = MFL_LOGIN_URL
-    data = {"USERNAME": username, "PASSWORD": password}
+    data = {"USERNAME": username, "PASSWORD": password, "XML": 1}
 
     # Send POST request with HTTPS
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     response = requests.post(url, headers=headers, data=data, verify=True)
-
+    print(f"response: {response}")
+    print(f"body: {response.headers}")
+    # try:
+    #   response_json = response.json()
+    #   print(json.dumps(response_json, indent=2))
+    # except json.decoder.JSONDecodeError:
+    print(f"response.text: {response.text}")
+    
     # Check response status
     if response.status_code == 200:
         # Extract cookie information
         cookie_data = response.cookies.get_dict()
-        cookie_name = list(cookie_data.keys())[0]
-        cookie_value = cookie_data[cookie_name]
+        print(f"cookie_data: {cookie_data}")
+
+        cookie_value = cookie_data[MFL_USER_COOKIE_KEY]
+        print(f"cookie_value: {cookie_value}")
+        return f"Cookie: {MFL_USER_COOKIE_KEY}={cookie_value}"
 
         # Return success message and cookie
-        return {
-            'statusCode': 200,
-            'body': json.dumps({
-                'message': 'Login successful!',
-                'cookie': f"Cookie: {cookie_name}={cookie_value}"
-            })
-        }
+        # return {
+        #     'statusCode': 200,
+        #     'body': json.dumps({
+        #         'message': 'Login successful!',
+        #         'cookie': f"Cookie: {cookie_name}={cookie_value}"
+        #     })
+        # }
     else:
+        return "ERROR"
         # Return error message
-        return {
-            'statusCode': response.status_code,
-            'body': json.dumps({
-                'message': f"Login failed with status code: {response.status_code}"
-            })
-        }
+        # return {
+        #     'statusCode': response.status_code,
+        #     'body': json.dumps({
+        #         'message': f"Login failed with status code: {response.status_code}"
+        #     })
+        # }
 
 def lambda_handler(event, context):
     login()

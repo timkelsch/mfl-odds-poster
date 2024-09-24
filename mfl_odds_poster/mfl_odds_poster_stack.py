@@ -1,6 +1,8 @@
 from aws_cdk import (
     aws_apigateway as apigw,
     aws_cloudfront as cloudfront,
+    aws_events as events,
+    aws_events_targets as targets,
     aws_iam as iam,
     aws_kms as kms,
     aws_lambda as _lambda,
@@ -9,6 +11,7 @@ from aws_cdk import (
     Fn,
     Stack
 )
+from aws_solutions_constructs.aws_apigateway_lambda import ApiGatewayToLambda
 from aws_solutions_constructs.aws_cloudfront_apigateway_lambda import CloudFrontToApiGatewayToLambda
 from constructs import Construct
 import os
@@ -126,15 +129,16 @@ class MflOddsPosterStack(Stack):
         )
 
         cfnToAgwToLmb = CloudFrontToApiGatewayToLambda(
-            self, 'CloudFrontApiGatewayToLambda',
+            self,
+            'CloudFrontApiGatewayToLambda',
             lambda_function_props=_lambda.FunctionProps(
                 runtime=_lambda.Runtime.PYTHON_3_11,
                 code=_lambda.Code.from_asset(
-                    'mfl_odds',
+                    'lambda/gather_odds',
                     exclude=['.envrc', 'games.json']
                 ),
                 handler='gather.lambda_handler',
-                layers=[self.create_dependencies_layer('mfl_odds', 'gather')],
+                layers=[self.create_dependencies_layer('lambda/gather_odds', 'gather')],
                 role=mfl_odds_lambda_role,
                 environment={
                     'SECRET_ARN': mfl_odds_secret.attr_id
@@ -150,18 +154,56 @@ class MflOddsPosterStack(Stack):
                 default_method_options=apigw.MethodOptions(
                     authorization_type=apigw.AuthorizationType.NONE
                 )
-            )
+            ),
+            # TODO: Set cache_policy on cloudfront distro to CacheDisabled = 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            # cloud_front_distribution_props=cloudfront.CfnDistributionProps(
+            #     distribution_config=cloudfront.CfnDistribution.DistributionConfigProperty(
+            #         enabled=True,
+            #         default_cache_behavior=cloudfront.CfnDistribution.DefaultCacheBehaviorProperty(
+            #             target_origin_id="targetOriginId",
+            #             viewer_protocol_policy="viewerProtocolPolicy",
+            #             cache_policy_id=cloudfront.CachePolicy.CACHING_DISABLED
+            #         )
+            #     )
+            # )
         )
 
         CfnOutput(self, 'CloudFrontDistributionDomainName',
-            value=cfnToAgwToLmb.cloud_front_web_distribution.domain_name  # distro.distribution_domain_name
+            value=cfnToAgwToLmb.cloud_front_web_distribution.domain_name
         )
+
+        AgwToLmb = ApiGatewayToLambda(
+            self,
+            'ApiGatewayToLambdaPattern',
+                lambda_function_props=_lambda.FunctionProps(
+                runtime=_lambda.Runtime.PYTHON_3_11,
+                code=_lambda.Code.from_asset('lambda/post_odds'),
+                handler='post.lambda_handler',
+                layers=[self.create_dependencies_layer('lambda/post_odds', 'post')],
+                role=mfl_odds_lambda_role,
+                environment={
+                    'SECRET_ARN': mfl_odds_secret.attr_id
+                }
+            )
+        )
+
+        rule = events.Rule(
+            self,
+            "MyRule",
+            schedule=events.Schedule.cron(
+                minute="0", hour="1", month="*", week_day="5", year="*")
+                # 01:00 every Thursday UTC == 18:00 every Wednesday PT
+        )
+
+        # Set the Lambda function as the target of the rule
+        # rule.add_target(targets.LambdaFunction(AgwToLmb.lambda_function))
+
 
     def create_dependencies_layer(
             self,
             project_name,
             function_name: str) -> _lambda.LayerVersion:
-        requirements_file = "mfl_odds/requirements.txt"  # 👈🏽 point to requirements.txt
+        requirements_file = "lambda/gather_odds/requirements.txt"  # 👈🏽 point to requirements.txt
         output_dir = ".build/app"  # 👈🏽 a temp directory to store the dependencies
 
         if not os.environ.get("SKIP_PIP"):

@@ -152,7 +152,7 @@ def adjust_float(num):
         return num
 
 
-def get_secret(secret_name):
+def get_secret(secret_name, subsecret_key):
     """
     Retrieve a secret from AWS Secrets Manager.
 
@@ -168,9 +168,26 @@ def get_secret(secret_name):
         wrapper = GetSecretWrapper(client)
         secret = wrapper.get_secret(secret_name)
         # Note: Secrets should not be logged.
-        return secret
+        secret_data = json.loads(secret)
+        secret_value = secret_data[subsecret_key]
+        return secret_value
     except Exception as e:
         logging.error(f"Error retrieving secret: {e}")
+        raise
+
+
+def get_env_var(var_name):
+    """
+    Retrieve an environment variable.
+
+    :param var_name: Name of the environment variable.
+    :type var_name: str
+    """
+    try:
+        value = os.environ.get(var_name)
+        return value
+    except KeyError:
+        logging.error(f"Environment variable {var_name} is not set.")
         raise
 
 
@@ -179,22 +196,21 @@ def main():
     API_BASE_URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/"
     API_PARAMETERS = "?regions=us&markets=spreads,totals&bookmakers=draftkings&apiKey="
     ENV_VAR_SECRET_ARN = "SECRET_ARN"
+    SUBSECRET_KEY = "the-odds-api-key"
+  # checkov:skip=CKV_SECRET_6: not a secret
 
     parser = argparse.ArgumentParser(description="Process football game data")
     parser.add_argument("source", nargs="?", type=str,
                         help="File path or URL for the JSON data (optional)")
     args = parser.parse_args()
 
-    secret_arn = os.environ.get(ENV_VAR_SECRET_ARN)
-    if secret_arn is None:
-        raise KeyError(
-            logging.error(f"Environment variable is not set: {ENV_VAR_SECRET_ARN}"))
+    secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
 
     if args.source:
         logging.info(f"Using local file: {args.source}")
         games_data = fetch_game_data(args.source)
     else:
-        url = API_BASE_URL + API_PARAMETERS + get_secret(secret_arn)
+        url = API_BASE_URL + API_PARAMETERS + get_secret(secret_arn, SUBSECRET_KEY)
         logging.info(f"Using API URL: {API_BASE_URL + API_PARAMETERS}")
         games_data = fetch_game_data(url)
 

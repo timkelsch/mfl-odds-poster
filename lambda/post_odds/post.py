@@ -103,5 +103,35 @@ def login():
         #     })
         # }
 
+
+def get_host():
+    url = "https://api.myfantasyleague.com/2024/export?TYPE=league&L=15781&JSON=1"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()  # Parse the JSON response
+        base_url = data["league"]["baseURL"]  # Access the base URL using .get() for optional value
+        if base_url:
+            print(f"Base URL from JSON: {base_url}")
+            return base_url
+        else:
+            print("Base URL not found in the JSON response.")
+    else:
+        print(f"Error retrieving data: {response.status_code}")
+
+
+def check_import_message_thread(caookie_crisp):
+    # cookie_name = "MFL_USER_ID"
+    # cookie_value = "your_cookie_value"
+
+    headers = {
+        caookie_crisp
+    }
+
+    response = requests.get("https://api.myfantasyleague.com/2024/some_endpoint", headers=headers)
+
+
 def lambda_handler(event, context):
     login()
+    host = get_host()
+    print(f"host: {host}")

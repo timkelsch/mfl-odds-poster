@@ -49,6 +49,14 @@ class MflOddsPosterStack(Stack):
             )
         )
 
+        mfl_odds_lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["lambda:InvokeFunction"],
+                resources=[Fn.sub("arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:MflOddsPosterStack-ApiGatewayToLambdaPatternLambda-*")]
+            )
+        )
+
         mfl_odds_kms_key = kms.CfnKey(
             self,
             "mflOddsKmsKey",

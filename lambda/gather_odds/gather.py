@@ -119,7 +119,7 @@ def transform_game_data(games):
     return transformed_games
 
 
-def format_games(formatted_games):
+def format_games(formatted_games, newline_symbol):
     current_day = None
 
     buffer = io.StringIO()
@@ -128,16 +128,16 @@ def format_games(formatted_games):
         game_day = isoparse(game["commence_time"]).strftime("%A")  # Get day of the week
         if game_day != current_day:  # Print day heading if day changes
             current_day = game_day
-            buffer.write(f"\n*** {current_day.upper()} ***\n\n")
+            buffer.write(f"{newline_symbol}*** {current_day.upper()} ***{newline_symbol}{newline_symbol}")
 
         if game['favored_team'] == game['away_team']:
             buffer.write(
-                f"{game['away_team']} | {game['point_spread']} | {game['totals_point']}\n")
-            buffer.write(f"{game['home_team']}\n\n")
+                f"{game['away_team']} | {game['point_spread']} | {game['totals_point']}{newline_symbol}")
+            buffer.write(f"{game['home_team']}{newline_symbol}{newline_symbol}")
         else:
-            buffer.write(f"{game['away_team']}\n")
+            buffer.write(f"{game['away_team']}{newline_symbol}")
             buffer.write(
-                f"{game['home_team']} | {game['point_spread']} | {game['totals_point']}\n\n")
+                f"{game['home_team']} | {game['point_spread']} | {game['totals_point']}{newline_symbol}{newline_symbol}")
 
     return buffer.getvalue()
 
@@ -191,7 +191,7 @@ def get_env_var(var_name):
         raise
 
 
-def main():
+def main(newline_symbol):
     # https://the-odds-api.com/liveapi/guides/v4/#overview
     API_BASE_URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/"
     API_PARAMETERS = "?regions=us&markets=spreads,totals&bookmakers=draftkings&apiKey="
@@ -216,7 +216,7 @@ def main():
 
     adjust_times_zones(games_data)
     transformed_game_data = transform_game_data(games_data)
-    jimbo = str(format_games(transformed_game_data))
+    jimbo = str(format_games(transformed_game_data, newline_symbol))
     response = {
         "statusCode": 200,
         "headers": {
@@ -229,11 +229,21 @@ def main():
 
 
 if __name__ == "__main__":
-    output = main()["body"]
+    output = main("\n")["body"]
     print(output)
 
 
 def lambda_handler(event, context):
-    output = main()
-    return output
+    body = main("<br>")
+    data = {
+        "body": body
+    }
+
+    response = boto3.client('lambda').invoke(
+        FunctionName="arn:aws:lambda:us-east-1:287140326780:function:MflOddsPosterStack-ApiGatewayToLambdaPatternLambda-JGqGX5weDJEg",
+        Payload=json.dumps(data)
+    )
+    logging.info(f"Payload: {response.Payload}")
+
+    return body
 

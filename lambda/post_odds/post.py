@@ -1,18 +1,18 @@
 import boto3
+import datetime
 import json
 import logging
 import os
 import pprint
 import requests
+import time
+import urllib.parse
 
-MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
-SUBSECRET_KEY = "the-odds-api-key"
-# checkov:skip=CKV_SECRET_6: not a secret
-ENV_VAR_SECRET_ARN = "SECRET_ARN"
-MFL_USER_COOKIE_KEY = "MFL_USER_ID"
-# TODO: look this up instead of hard coding
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-logging.basicConfig(level=logging.INFO)
+MAX_RETRIES = 3
+SLEEP_SECONDS = 3
 
 
 def get_secret(secret_name, subsecret_key):
@@ -23,10 +23,9 @@ def get_secret(secret_name, subsecret_key):
     :type secret_name: str
     """
     try:
-        # Validate secret_name
         if not secret_name:
             raise ValueError("Secret name must be provided.")
-        # Retrieve the secret by name
+
         client = boto3.client("secretsmanager")
         response = client.get_secret_value(SecretId=secret_name)
         secret_string = response['SecretString']
@@ -56,106 +55,45 @@ def get_env_var(var_name):
 
 
 def login():
-    # Retrieve username and password from AWS Secrets Manager
     secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
     username = get_secret(secret_arn, 'mfl-username')
     password = get_secret(secret_arn, 'mfl-password')
     
-    # Prepare login request
     url = MFL_LOGIN_URL
     data = {"USERNAME": username, "PASSWORD": password, "XML": 1}
 
     # Send POST request with HTTPS
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    response = requests.post(url, headers=headers, data=data, verify=True)
-    print(f"response: {response}")
-    print(f"body: {response.headers}")
-    # try:
-    #   response_json = response.json()
-    #   print(json.dumps(response_json, indent=2))
-    # except json.decoder.JSONDecodeError:
-    print(f"response.text: {response.text}")
     
-    # Check response status
-    if response.status_code == 200:
-        # Extract cookie information
-        cookie_data = response.cookies.get_dict()
-        print(f"cookie_data: {cookie_data}")
+    for attempt in range(1, MAX_RETRIES + 1):
+        response = requests.post(url, headers=headers, data=data, verify=True)
+        pretty_print_response(response)
 
-        cookie_value = cookie_data[MFL_USER_COOKIE_KEY]
-        print(f"cookie_value: {cookie_value}")
-        return cookie_value
+        if response.status_code == 200:
+            cookie_data = response.cookies.get_dict()
+            cookie_value = cookie_data[MFL_USER_COOKIE_KEY]
+            # print(f"cookie_value: {cookie_value}")
+            return cookie_value
+        else:
+            logging.error(f"Login attempt {attempt} failed with status code {response.status_code}. Retrying...")
+            time.sleep(SLEEP_SECONDS)
 
-        # Return success message and cookie
-        # return {
-        #     'statusCode': 200,
-        #     'body': json.dumps({
-        #         'message': 'Login successful!',
-        #         'cookie': f"Cookie: {cookie_name}={cookie_value}"
-        #     })
-        # }
-    else:
-        return "ERROR"
-        # Return error message
-        # return {
-        #     'statusCode': response.status_code,
-        #     'body': json.dumps({
-        #         'message': f"Login failed with status code: {response.status_code}"
-        #     })
-        # }
+    raise Exception("Maximum number of login attempts reached.")
 
 
 def get_host():
     url = "https://api.myfantasyleague.com/2024/export?TYPE=league&L=15781&JSON=1"
-    response = requests.get(url)
-    # TODO: Go back and integrate this baseURL with the rest of the project
-
-    if response.status_code == 200:
-        data = response.json()  # Parse the JSON response
-        base_url = data["league"]["baseURL"]  # Access the base URL using .get() for optional value
-        if base_url:
-            print(f"Base URL from JSON: {base_url}")
-            return base_url
-        else:
-            print("Base URL not found in the JSON response.")
-    else:
-        print(f"Error retrieving data: {response.status_code}")
-
-
-def check_import_message_thread(caookie_crisp):
-    # cookie_name = "MFL_USER_ID"
-    # cookie_value = "your_cookie_value"
-    API = "import?"
-    YEAR = 2024  # TODO: Be better
-    LEAGUE_ID = "15781"  # TODO: put all of this somewhere less dumb
-    FRANCHISE_ID = "0008",
-    SUBJECT = "",
-    THREAD = "6479288"
-    BODY = "remember that chick in high school? yeah, marc spermsmeyer ate her lunch."
     
-    host = get_host()
-    headers = {
-        f"{MFL_USER_COOKIE_KEY}": f"{caookie_crisp}",
-        'Content-Type': 'application/x-www-form-urlencoded'
-    }
-    print(f"headers: {headers}")
-    data = {
-        "TYPE": 'messageBoard',
-        "L": LEAGUE_ID,
-        "FRANCHISE_ID": FRANCHISE_ID,
-        "THREAD": THREAD,
-        "BODY": BODY,
-        "JSON": 1
-    }
+    try:
+        response = requests.get(url)
+        # TODO: Go back and integrate this baseURL with the rest of the project
 
-    url = f"{host}/{YEAR}/{API}"
-    print(f"url: {url}")
-
-    # Send POST request with HTTPS
-    response = requests.post(url, headers=headers, data=data, verify=True)
-    print(f"content: {response.content}")
-    pretty_print_response(response.json())
-    return response
+        data = response.json()  # Parse the JSON response
+        base_url = data["league"]["baseURL"]
+        if base_url:
+            return base_url
+    except Exception as e:
+        logger.error(f"ERROR: Cannot obtain API host\n{e}")
 
 
 def pretty_print_response(response):
@@ -166,21 +104,68 @@ def pretty_print_response(response):
         response: The HTTP response object.
     """
 
-    print(f"Status Code: {response.status_code}")
-    print(f"Headers:")
-    pprint.pprint(dict(response.headers))
+    logger.info(f"URL: {response.url}")
+    logger.info(f"Status Code: {response.status_code}")
+    logger.info(f"Reason: {response.reason}")
+    logger.info(f"Request: {response.request}")
+    logger.info(f"Text: {response.text}")
+    logger.info(f"Content: {response.content}")
+    # logger.info(f"Headers:")
+    # pprint.pprint(dict(response.headers))
 
-    try:
-        response_json = response.json()
-        print(json.dumps(response_json, indent=2))
-    except json.decoder.JSONDecodeError:
-        print(f"Response body: {response.text}")
 
+def build_http_get_request(base_url, cookie, query_params):
+    url = f"{base_url}?"
+    logging.info(f"url: {url}")
+    cookies = { f"{MFL_USER_COOKIE_KEY}": f"{cookie}" }
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        response = requests.get(url, cookies=cookies, params=query_params, verify=True)
+        logger.info("***MAIN REQUEST***")
+        pretty_print_response(response)
+
+        if response.status_code == 200:
+            return response
+        else:
+            logging.error(f"Attempt #{attempt} to post to messageBoard failed with status code {response.status_code}. Retrying...")
+            time.sleep(SLEEP_SECONDS)
+
+    raise Exception("ERROR: Maximum number of attempts to post to messageBoard reached.")
+
+
+SUBSECRET_KEY = "the-odds-api-key"
+# checkov:skip=CKV_SECRET_6: not a secret
+MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
+ENV_VAR_SECRET_ARN = "SECRET_ARN"
+MFL_USER_COOKIE_KEY = "MFL_USER_ID"
+REQUEST_TYPE = "messageBoard"
+YEAR = datetime.date.today().year
+API = "import"
+LEAGUE_ID = "15781"
+FRANCHISE_ID = "0008"
+SUBJECT = ""
+THREAD = "6480193"
+# BODY = "marc<br>hermsmeyer<br>did<br>what?!|"
+
+
+def build_query_object(request_type, league_id, franchise_id, thread, subject, body):
+    query_params = {
+        "TYPE": request_type,
+        "L": league_id,
+        "FRANCHISE_ID": franchise_id,
+        "THREAD": thread,
+        "SUBJECT": subject,
+        "BODY": body,
+        "JSON": 1
+    }
+    return query_params
 
 def lambda_handler(event, context):
     cookie = login()
-    print(f"cookie: {cookie}")
+    logger.info(f"cookie: {cookie}")
     host = get_host()
-    print(f"host: {host}")
-    response = check_import_message_thread(cookie)
+    # logger.info(f"event: {event['Payload']}")
+    body = json.loads(event['body'])
+    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, SUBJECT, body)
+    response = build_http_get_request(f"{host}/{YEAR}/{API}", cookie, query_object)
     pretty_print_response(response)

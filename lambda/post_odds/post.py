@@ -2,6 +2,7 @@ import boto3
 import json
 import logging
 import os
+import pprint
 import requests
 
 MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
@@ -83,7 +84,7 @@ def login():
 
         cookie_value = cookie_data[MFL_USER_COOKIE_KEY]
         print(f"cookie_value: {cookie_value}")
-        return f"Cookie: {MFL_USER_COOKIE_KEY}={cookie_value}"
+        return cookie_value
 
         # Return success message and cookie
         # return {
@@ -107,6 +108,7 @@ def login():
 def get_host():
     url = "https://api.myfantasyleague.com/2024/export?TYPE=league&L=15781&JSON=1"
     response = requests.get(url)
+    # TODO: Go back and integrate this baseURL with the rest of the project
 
     if response.status_code == 200:
         data = response.json()  # Parse the JSON response
@@ -123,15 +125,61 @@ def get_host():
 def check_import_message_thread(caookie_crisp):
     # cookie_name = "MFL_USER_ID"
     # cookie_value = "your_cookie_value"
-
+    API = "import?"
+    YEAR = 2024  # TODO: Be better
+    LEAGUE_ID = "15781"  # TODO: put all of this somewhere less dumb
+    FRANCHISE_ID = "0008"
+    THREAD = "6479288"
+    BODY = "remember that chick in high school? yeah, marc spermsmeyer ate her lunch."
+    
+    host = get_host()
     headers = {
-        caookie_crisp
+        f"{MFL_USER_COOKIE_KEY}": f"{caookie_crisp}",
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    print(f"headers: {headers}")
+    data = {
+        "TYPE": "messageBoard",
+        "L": LEAGUE_ID,
+        "FRANCHISE_ID": FRANCHISE_ID,
+        "THREAD": THREAD,
+        "BODY": BODY,
+        "JSON": 1
     }
 
-    response = requests.get("https://api.myfantasyleague.com/2024/some_endpoint", headers=headers)
+    url = f"{host}/{YEAR}/{API}"
+    print(f"url: {url}")
+
+    # Send POST request with HTTPS
+    response = requests.post(url, headers=headers, data=data, verify=True)
+    print(f"content: {response.content}")
+    pretty_print_response(response.json())
+    return response
+
+
+def pretty_print_response(response):
+    """
+    Pretty-prints a HTTP response object.
+
+    Args:
+        response: The HTTP response object.
+    """
+
+    print(f"Status Code: {response.status_code}")
+    print(f"Headers:")
+    pprint.pprint(dict(response.headers))
+
+    try:
+        response_json = response.json()
+        print(json.dumps(response_json, indent=2))
+    except json.decoder.JSONDecodeError:
+        print(f"Response body: {response.text}")
 
 
 def lambda_handler(event, context):
-    login()
+    cookie = login()
+    print(f"cookie: {cookie}")
     host = get_host()
     print(f"host: {host}")
+    response = check_import_message_thread(cookie)
+    pretty_print_response(response)

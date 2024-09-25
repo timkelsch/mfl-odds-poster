@@ -128,7 +128,8 @@ def check_import_message_thread(caookie_crisp):
     API = "import?"
     YEAR = 2024  # TODO: Be better
     LEAGUE_ID = "15781"  # TODO: put all of this somewhere less dumb
-    FRANCHISE_ID = "0008"
+    FRANCHISE_ID = "0008",
+    SUBJECT = "",
     THREAD = "6479288"
     BODY = "remember that chick in high school? yeah, marc spermsmeyer ate her lunch."
     
@@ -139,7 +140,7 @@ def check_import_message_thread(caookie_crisp):
     }
     print(f"headers: {headers}")
     data = {
-        "TYPE": "messageBoard",
+        "TYPE": 'messageBoard',
         "L": LEAGUE_ID,
         "FRANCHISE_ID": FRANCHISE_ID,
         "THREAD": THREAD,

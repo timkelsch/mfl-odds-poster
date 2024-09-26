@@ -36,6 +36,22 @@ we could have two virtual environments in the repo root directory - one for CDK 
 the lambda. This would require switching virtual envs whenever the dev switches focus from CDK
 to lambda and vice versa.
 
+# Long Term Storage Opportunities
+
+1. API Host
+1. NFL year start date
+
+# Secret Format
+
+```
+{
+  "the-odds-api-key": "",
+  "mfl-username": "",
+  "mfl-password": "",
+  "nfl-api-key": ""
+}
+```
+
 # Env of Notes
 
 After the init process completes and the virtualenv is created, you can use the following

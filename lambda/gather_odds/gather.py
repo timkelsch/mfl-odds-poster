@@ -11,6 +11,7 @@ from dateutil.parser import isoparse
 from datetime import datetime, timedelta
 
 PT_TIME_ZOME = pytz.timezone('US/Pacific')
+POSTER_LAMBDA_ARN = "POSTER_LAMBDA_ARN"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -235,12 +236,13 @@ if __name__ == "__main__":
 
 def lambda_handler(event, context):
     body = main("<br>")
+    poster_lambda_arn = get_env_var(POSTER_LAMBDA_ARN)
     data = {
         "body": body
     }
 
     response = boto3.client('lambda').invoke(
-        FunctionName="arn:aws:lambda:us-east-1:287140326780:function:MflOddsPosterStack-ApiGatewayToLambdaPatternLambda-JGqGX5weDJEg",
+        FunctionName=poster_lambda_arn,
         Payload=json.dumps(data)
     )
     # logging.info(f"Payload: {response.Payload}")

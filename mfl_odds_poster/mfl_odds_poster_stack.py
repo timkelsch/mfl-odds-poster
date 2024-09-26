@@ -137,10 +137,28 @@ class MflOddsPosterStack(Stack):
             secret_id=mfl_odds_secret.attr_id  # Required
         )
 
+        AgwToLmb = ApiGatewayToLambda(
+            self,
+            'ApiGatewayToLambdaPattern',
+            lambda_function_props=_lambda.FunctionProps(
+                # TODO: Add description
+                runtime=_lambda.Runtime.PYTHON_3_11,
+                code=_lambda.Code.from_asset('lambda/post_odds'),
+                handler='post.lambda_handler',
+                layers=[self.create_dependencies_layer('lambda/post_odds', 'post')],
+                role=mfl_odds_lambda_role,
+                timeout=Duration.seconds(8),
+                environment={
+                    'SECRET_ARN': mfl_odds_secret.attr_id
+                }
+            )
+        )
+
         cfnToAgwToLmb = CloudFrontToApiGatewayToLambda(
             self,
             'CloudFrontApiGatewayToLambda',
             lambda_function_props=_lambda.FunctionProps(
+                # TODO: Add description
                 runtime=_lambda.Runtime.PYTHON_3_11,
                 code=_lambda.Code.from_asset(
                     'lambda/gather_odds',
@@ -151,7 +169,8 @@ class MflOddsPosterStack(Stack):
                 role=mfl_odds_lambda_role,
                 timeout=Duration.seconds(8),
                 environment={
-                    'SECRET_ARN': mfl_odds_secret.attr_id
+                    'SECRET_ARN': mfl_odds_secret.attr_id,
+                    'POSTER_LAMBDA_ARN': AgwToLmb.lambda_function.function_arn
                 }
             ),
             # NOTE - we use RestApiProps here because the actual type,
@@ -182,38 +201,27 @@ class MflOddsPosterStack(Stack):
             value=cfnToAgwToLmb.cloud_front_web_distribution.domain_name
         )
 
-        AgwToLmb = ApiGatewayToLambda(
-            self,
-            'ApiGatewayToLambdaPattern',
-                lambda_function_props=_lambda.FunctionProps(
-                runtime=_lambda.Runtime.PYTHON_3_11,
-                code=_lambda.Code.from_asset('lambda/post_odds'),
-                handler='post.lambda_handler',
-                layers=[self.create_dependencies_layer('lambda/post_odds', 'post')],
-                role=mfl_odds_lambda_role,
-                timeout=Duration.seconds(8),
-                environment={
-                    'SECRET_ARN': mfl_odds_secret.attr_id
-                }
-            )
-        )
-
         rule = events.Rule(
             self,
             "MyRule",
             schedule=events.Schedule.cron(
+                # minute="59", hour="4", month="*", week_day="5", year="*")
                 minute="0", hour="1", month="*", week_day="5", year="*")
                 # 01:00 every Thursday UTC == 18:00 every Wednesday PT
         )
 
         # Set the Lambda function as the target of the rule
-        rule.add_target(targets.LambdaFunction(AgwToLmb.lambda_function))
+        rule.add_target(targets.LambdaFunction(cfnToAgwToLmb.lambda_function))
 
+        events.RuleTargetConfig(
+            arn=cfnToAgwToLmb.lambda_function.function_arn,
+            role=mfl_odds_lambda_role
+        )
 
     def create_dependencies_layer(
-            self,
-            project_name,
-            function_name: str) -> _lambda.LayerVersion:
+        self,
+        project_name,
+        function_name: str) -> _lambda.LayerVersion:
         requirements_file = "lambda/gather_odds/requirements.txt"  # 👈🏽 point to requirements.txt
         output_dir = ".build/app"  # 👈🏽 a temp directory to store the dependencies
 

@@ -5,38 +5,127 @@ import logging
 import os
 import pprint
 import requests
+import sys
 import time
 import urllib.parse
+import sys
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 MAX_RETRIES = 3
 SLEEP_SECONDS = 3
-SUBSECRET_KEY = "the-odds-api-key"
-# checkov:skip=CKV_SECRET_6: not a secret
 MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
 ENV_VAR_SECRET_ARN = "SECRET_ARN"
+SUBSECRET_KEY_THEODDS_API_KEY = "the-odds-api-key"
+# checkov:skip=CKV_SECRET_6: not a secret
+NFL_API_URL = "https://nfl-football-api.p.rapidapi.com/nfl-whitelist"
+SUBSECRET_KEY_NFL_API_API_KEY = "nfl-api-key"
+
 MFL_USER_COOKIE_KEY = "MFL_USER_ID"
 REQUEST_TYPE = "messageBoard"
 YEAR = datetime.date.today().year
 API = "import"
 LEAGUE_ID = "15781"
 FRANCHISE_ID = "0008"
-SUBJECT = ""
-THREAD = "6480193"
+# SUBJECT = ""
+THREAD = ""  # "6480193" == test thread
 
 
 def lambda_handler(event, context):
     cookie = login()
     logger.info(f"cookie: {cookie}")
     host = get_host()
-    body = event['body']['body']
-    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, SUBJECT, body)
+    try:
+        body = event['body']['body']
+    except KeyError as e:
+        logging.error(f"ERROR: Cannot retrieve data from calling lambda event:\n{e}")
+
+    first_day_regular_season = get_current_nfl_season_first_day()
+    week_1_start_date, week_1_end_date = get_week_start_end(first_day_regular_season)
+    week = get_current_nfl_week(week_1_start_date, datetime.datetime.now(datetime.timezone.utc))
+    subject = f"Week {week}: Three-Leg Parlay"
+    logger.info(f"subject: {subject}")
+
+    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, subject, body)
     response = build_http_get_request(f"{host}/{YEAR}/{API}", cookie, query_object)
     pretty_print_response(response)
 
-    
+
+def get_current_nfl_week(first_game_date, input_date):
+  """
+  Calculates the NFL week number based on the input date and the first game date.
+
+  Args:
+    input_date: The input date as a datetime.date object.
+    first_game_date: The date of the first regular season game as a datetime.date object.
+
+  Returns:
+    The NFL week number.
+  """
+
+  # Calculate the difference in days between the input date and the first game date
+  days_since_first_game = (input_date - first_game_date).days
+  logger.info(f"days_since_first_game: {days_since_first_game}")
+  # Calculate the NFL week number (assuming Tuesday starts the week)
+  nfl_week = days_since_first_game // 7 + 1
+
+  return nfl_week
+
+
+def get_current_nfl_season_first_day():
+    secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
+    api_key = get_secret(secret_arn, SUBSECRET_KEY_NFL_API_API_KEY)
+    headers = {
+        "rapidapi-host": "nfl-football-api.p.rapidapi.com",
+        "rapidapi-key": api_key
+    }
+    response = requests.get(NFL_API_URL, headers=headers)
+    response.raise_for_status()
+
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError:
+        data = response.text  # If the response is not JSON, return the text as is
+        
+    startDate = ""
+    try:
+        # Iterate through the "sections" list
+        for section in data["sections"]:
+            # Check if the section is "Regular Season"
+            if section["label"] == "Regular Season":
+                # Iterate through the "entries" list within the section
+                for entry in section["entries"]:
+                    # Check if the entry is Week 1
+                    if entry["label"] == "Week 1":
+                        # Return the start date
+                        startDate = entry["startDate"]
+    except KeyError as e:
+        logger.error(f"Error parsing NFL API response: {e}")
+        sys.exit(1)
+
+    datetime_startDate = datetime.datetime.fromisoformat(startDate)
+
+    logger.info(f"datetime_startDate: {datetime_startDate}")
+    return datetime_startDate
+
+
+def get_week_start_end(date, week_start=1):
+    """
+    This is going to be in UTC meaning that start will be 5pm PT (UTC midnight)
+    monday night which is okay because this will run on Wednesday evening via cron
+    and we're only using this to determine what NFL week we're currently in.
+    """
+    while date.weekday() != week_start:
+        date -= datetime.timedelta(days=1)
+
+    week_start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end_date = (week_start_date + datetime.timedelta(days=6)
+                     ).replace(hour=23, minute=59, second=59, microsecond=999)
+
+    return week_start_date, week_end_date
+
+
 def build_query_object(request_type, league_id, franchise_id, thread, subject, body):
     query_params = {
         "TYPE": request_type,
@@ -83,6 +172,8 @@ def get_env_var(var_name):
     """
     try:
         value = os.environ.get(var_name)
+        logger.info(f"var_name: {var_name}")
+        logger.info(f"var_value: {value}")
         return value
     except KeyError:
         logging.error(f"Environment variable {var_name} is not set.")
@@ -113,7 +204,8 @@ def login():
             logging.error(f"Login attempt {attempt} failed with status code {response.status_code}. Retrying...")
             time.sleep(SLEEP_SECONDS)
 
-    raise Exception("Maximum number of login attempts reached.")
+    logger.error("ERROR: Maximum number of login attempts reached.")
+    sys.exit(1)
 
 
 def get_host():
@@ -128,7 +220,7 @@ def get_host():
         if base_url:
             return base_url
     except Exception as e:
-        logger.error(f"ERROR: Cannot obtain API host\n{e}")
+        logger.error(f"ERROR: Cannot obtain API host. {e}")
 
 
 def pretty_print_response(response):
@@ -165,6 +257,6 @@ def build_http_get_request(base_url, cookie, query_params):
             logging.error(f"Attempt #{attempt} to post to messageBoard failed with status code {response.status_code}. Retrying...")
             time.sleep(SLEEP_SECONDS)
 
-    raise Exception("ERROR: Maximum number of attempts to post to messageBoard reached.")
-
+    logger.error("ERROR: Maximum number of attempts to post to messageBoard reached. Exiting.")
+    sys.exit(1)
 

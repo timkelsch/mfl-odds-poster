@@ -243,7 +243,7 @@ def lambda_handler(event, context):
         FunctionName="arn:aws:lambda:us-east-1:287140326780:function:MflOddsPosterStack-ApiGatewayToLambdaPatternLambda-JGqGX5weDJEg",
         Payload=json.dumps(data)
     )
-    logging.info(f"Payload: {response.Payload}")
+    # logging.info(f"Payload: {response.Payload}")
 
     return body
 

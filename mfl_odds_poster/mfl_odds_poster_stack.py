@@ -8,6 +8,7 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_secretsmanager as asm,
     CfnOutput,
+    Duration,
     Fn,
     Stack
 )
@@ -148,6 +149,7 @@ class MflOddsPosterStack(Stack):
                 handler='gather.lambda_handler',
                 layers=[self.create_dependencies_layer('lambda/gather_odds', 'gather')],
                 role=mfl_odds_lambda_role,
+                timeout=Duration.seconds(8),
                 environment={
                     'SECRET_ARN': mfl_odds_secret.attr_id
                 }
@@ -189,6 +191,7 @@ class MflOddsPosterStack(Stack):
                 handler='post.lambda_handler',
                 layers=[self.create_dependencies_layer('lambda/post_odds', 'post')],
                 role=mfl_odds_lambda_role,
+                timeout=Duration.seconds(8),
                 environment={
                     'SECRET_ARN': mfl_odds_secret.attr_id
                 }
@@ -204,7 +207,7 @@ class MflOddsPosterStack(Stack):
         )
 
         # Set the Lambda function as the target of the rule
-        # rule.add_target(targets.LambdaFunction(AgwToLmb.lambda_function))
+        rule.add_target(targets.LambdaFunction(AgwToLmb.lambda_function))
 
 
     def create_dependencies_layer(

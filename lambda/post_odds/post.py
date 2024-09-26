@@ -13,6 +13,41 @@ logger.setLevel(logging.INFO)
 
 MAX_RETRIES = 3
 SLEEP_SECONDS = 3
+SUBSECRET_KEY = "the-odds-api-key"
+# checkov:skip=CKV_SECRET_6: not a secret
+MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
+ENV_VAR_SECRET_ARN = "SECRET_ARN"
+MFL_USER_COOKIE_KEY = "MFL_USER_ID"
+REQUEST_TYPE = "messageBoard"
+YEAR = datetime.date.today().year
+API = "import"
+LEAGUE_ID = "15781"
+FRANCHISE_ID = "0008"
+SUBJECT = ""
+THREAD = "6480193"
+
+
+def lambda_handler(event, context):
+    cookie = login()
+    logger.info(f"cookie: {cookie}")
+    host = get_host()
+    body = event['body']['body']
+    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, SUBJECT, body)
+    response = build_http_get_request(f"{host}/{YEAR}/{API}", cookie, query_object)
+    pretty_print_response(response)
+
+    
+def build_query_object(request_type, league_id, franchise_id, thread, subject, body):
+    query_params = {
+        "TYPE": request_type,
+        "L": league_id,
+        "FRANCHISE_ID": franchise_id,
+        "THREAD": thread,
+        "SUBJECT": subject,
+        "BODY": body,
+        "JSON": 1
+    }
+    return query_params
 
 
 def get_secret(secret_name, subsecret_key):
@@ -133,39 +168,3 @@ def build_http_get_request(base_url, cookie, query_params):
     raise Exception("ERROR: Maximum number of attempts to post to messageBoard reached.")
 
 
-SUBSECRET_KEY = "the-odds-api-key"
-# checkov:skip=CKV_SECRET_6: not a secret
-MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
-ENV_VAR_SECRET_ARN = "SECRET_ARN"
-MFL_USER_COOKIE_KEY = "MFL_USER_ID"
-REQUEST_TYPE = "messageBoard"
-YEAR = datetime.date.today().year
-API = "import"
-LEAGUE_ID = "15781"
-FRANCHISE_ID = "0008"
-SUBJECT = ""
-THREAD = "6480193"
-# BODY = "marc<br>hermsmeyer<br>did<br>what?!|"
-
-
-def build_query_object(request_type, league_id, franchise_id, thread, subject, body):
-    query_params = {
-        "TYPE": request_type,
-        "L": league_id,
-        "FRANCHISE_ID": franchise_id,
-        "THREAD": thread,
-        "SUBJECT": subject,
-        "BODY": body,
-        "JSON": 1
-    }
-    return query_params
-
-def lambda_handler(event, context):
-    cookie = login()
-    logger.info(f"cookie: {cookie}")
-    host = get_host()
-    # logger.info(f"event: {event['Payload']}")
-    body = json.loads(event['body'])
-    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, SUBJECT, body)
-    response = build_http_get_request(f"{host}/{YEAR}/{API}", cookie, query_object)
-    pretty_print_response(response)

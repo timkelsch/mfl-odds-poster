@@ -188,7 +188,7 @@ def get_env_var(var_name):
         value = os.environ.get(var_name)
         return value
     except KeyError:
-        logging.error(f"Environment variable {var_name} is not set.")
+        logging.error(f"A required environment variable is not set.")
         raise
 
 

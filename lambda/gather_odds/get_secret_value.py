@@ -25,8 +25,8 @@ class GetSecretWrapper:
             logging.info("Secret retrieved successfully.")
             return get_secret_value_response["SecretString"]
         except self.client.exceptions.ResourceNotFoundException as e:
-            msg = f"The requested secret {secret_name} was not found."
-            logger.error(f"{msg}\n{e}")
+            msg = f"The requested secret was not found."
+            logger.error(f"{msg}\n{str(e)}")
             return msg
         except Exception as e:
             logger.error(f"An unknown error occurred: {str(e)}.")

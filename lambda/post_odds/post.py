@@ -8,7 +8,6 @@ import requests
 import sys
 import time
 import urllib.parse
-import sys
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

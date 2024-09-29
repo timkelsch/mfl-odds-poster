@@ -163,7 +163,7 @@ def get_secret(secret_name, subsecret_key):
     try:
         # Validate secret_name
         if not secret_name:
-            raise ValueError("Secret name must be provided.")
+            raise ValueError("Secret name must be provided. ")
         # Retrieve the secret by name
         client = boto3.client("secretsmanager")
         wrapper = GetSecretWrapper(client)

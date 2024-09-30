@@ -1,106 +1,53 @@
 name: Python Package
 
-# permissions:
-#   id-token: write
-#   contents: read
-
 on: [pull_request]
 
+permissions:
+  contents: read
+
 jobs:
-  checkout:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: run-commands
-        run: |
-          pwd
-          ls -al
-
-  validate:
-    runs-on: ubuntu-latest
-    needs: checkout
-    steps:
-      - name: Lint with flake8
-        uses: py-actions/flake8@v2
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12.6
+        uses: actions/setup-python@v3
         with:
-          max-line-length: "120"
-          ignore: "F841"
-        continue-on-error: false
-
-  build-cdk:
-    runs-on: ubuntu-latest
-    needs: checkout
-    steps:
-      - name: Set up Python
-        # This is the version of the action for setting up Python, not the Python version.
-        uses: actions/setup-python@v5
-        with:
-          # Semantic version range syntax or exact version of a Python version
           python-version: "3.12.6"
-          # cache: "pip"
-      - name: Display Python version
-        run: python -c "import sys; print(sys.version)"
       - name: Install dependencies
         run: |
-          pwd
-          ls -al
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-  # build-gather:
-  #   runs-on: ubuntu-latest
-  #   needs: checkout
-  #   steps:
-  #     - name: Set up Python
-  #       # This is the version of the action for setting up Python, not the Python version.
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         # Semantic version range syntax or exact version of a Python version
-  #         python-version: "3.12.6"
-  #         cache: "pip"
-  #         working-directory:
-  #     - name: Display Python version
-  #       run: python -c "import sys; print(sys.version)"
-  #     - name: Install dependencies
-  #       run: |
-  #         cd lambda/gather_odds
-  #         python -m pip install --upgrade pip
-  #         pip install -r requirements.txt
-
-  # build-post:
-  #   runs-on: ubuntu-latest
-  #   needs: checkout
-  #   steps:
-  #     - name: Set up Python
-  #       # This is the version of the action for setting up Python, not the Python version.
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         # Semantic version range syntax or exact version of a Python version
-  #         python-version: "3.12.6"
-  #         cache: "pip"
-  #     - name: Display Python version
-  #       run: python -c "import sys; print(sys.version)"
-  #     - name: Install dependencies
-  #       run: |
-  #         cd lambda/post_odds
-  #         python -m pip install --upgrade pip
-  #         pip install -r requirements.txt
-
-  diff:
-    runs-on: ubuntu-latest
-    needs: build-cdk
-    steps:
-      - name: CDK Diff
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      # - name: Test with pytest
+      #   run: pytest
+      - name: cdk-diff
         uses: youyo/aws-cdk-github-actions@v2
         with:
-          cdk_subcommand: "deploy"
+          cdk_subcommand: "diff"
           cdk_args: "--require-approval never"
           actions_comment: false
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: "us-east-1"
+
+  # validate:
+  #   runs-on: ubuntu-latest
+  #   needs: checkout
+  #   steps:
+  #     - name: Lint with flake8
+  #       uses: py-actions/flake8@v2
+  #       with:
+  #         max-line-length: "120"
+  #         ignore: "F841"
+  #       continue-on-error: false
 
   # deploy:
   #   runs-on: ubuntu-latest

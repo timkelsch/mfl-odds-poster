@@ -87,9 +87,7 @@ def transform_game_data(games):
     this_weeks_games = [
         game
         for game in games
-        if isoparse(game["commence_time"]) >= start_of_week
-        and
-        isoparse(game["commence_time"]) <= end_of_week
+        if isoparse(game["commence_time"]) >= start_of_week and isoparse(game["commence_time"]) <= end_of_week
     ]
 
     sorted_games = sorted(

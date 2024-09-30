@@ -188,7 +188,7 @@ def get_env_var(var_name):
         value = os.environ.get(var_name)
         return value
     except KeyError:
-        logging.error(f"A required environment variable is not set.")
+        logging.error("A required environment variable is not set.")
         raise
 
 
@@ -198,7 +198,7 @@ def main(newline_symbol):
     API_PARAMETERS = "?regions=us&markets=spreads,totals&bookmakers=draftkings&apiKey="
     ENV_VAR_SECRET_ARN = "SECRET_ARN"
     SUBSECRET_KEY = "the-odds-api-key"
-  # checkov:skip=CKV_SECRET_6: not a secret
+    # checkov:skip=CKV_SECRET_6: not a secret
 
     parser = argparse.ArgumentParser(description="Process football game data")
     parser.add_argument("source", nargs="?", type=str,
@@ -248,4 +248,3 @@ def lambda_handler(event, context):
     # logging.info(f"Payload: {response.Payload}")
 
     return body
-

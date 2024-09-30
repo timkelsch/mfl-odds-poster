@@ -6,9 +6,9 @@ import logging
 import os
 import pytz
 import requests
-from get_secret_value import GetSecretWrapper
-from dateutil.parser import isoparse
 from datetime import datetime, timedelta
+from dateutil.parser import isoparse
+from get_secret_value import GetSecretWrapper
 
 PT_TIME_ZOME = pytz.timezone('US/Pacific')
 POSTER_LAMBDA_ARN = "POSTER_LAMBDA_ARN"
@@ -87,9 +87,7 @@ def transform_game_data(games):
     this_weeks_games = [
         game
         for game in games
-        if isoparse(game["commence_time"]) >= start_of_week
-        and
-        isoparse(game["commence_time"]) <= end_of_week
+        if isoparse(game["commence_time"]) >= start_of_week and isoparse(game["commence_time"]) <= end_of_week
     ]
 
     sorted_games = sorted(
@@ -188,7 +186,7 @@ def get_env_var(var_name):
         value = os.environ.get(var_name)
         return value
     except KeyError:
-        logging.error(f"A required environment variable is not set.")
+        logging.error("A required environment variable is not set.")
         raise
 
 
@@ -198,7 +196,7 @@ def main(newline_symbol):
     API_PARAMETERS = "?regions=us&markets=spreads,totals&bookmakers=draftkings&apiKey="
     ENV_VAR_SECRET_ARN = "SECRET_ARN"
     SUBSECRET_KEY = "the-odds-api-key"
-  # checkov:skip=CKV_SECRET_6: not a secret
+    # checkov:skip=CKV_SECRET_6: not a secret
 
     parser = argparse.ArgumentParser(description="Process football game data")
     parser.add_argument("source", nargs="?", type=str,
@@ -248,4 +246,3 @@ def lambda_handler(event, context):
     # logging.info(f"Payload: {response.Payload}")
 
     return body
-

@@ -3,12 +3,9 @@ import datetime
 import json
 import logging
 import os
-import pprint
 import requests
 import sys
 import time
-import urllib.parse
-import sys
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -53,24 +50,24 @@ def lambda_handler(event, context):
 
 
 def get_current_nfl_week(first_game_date, input_date):
-  """
-  Calculates the NFL week number based on the input date and the first game date.
+    """
+    Calculates the NFL week number based on the input date and the first game date.
 
-  Args:
+    Args:
     input_date: The input date as a datetime.date object.
     first_game_date: The date of the first regular season game as a datetime.date object.
 
-  Returns:
+    Returns:
     The NFL week number.
-  """
+    """
 
-  # Calculate the difference in days between the input date and the first game date
-  days_since_first_game = (input_date - first_game_date).days
-  logger.info(f"days_since_first_game: {days_since_first_game}")
-  # Calculate the NFL week number (assuming Tuesday starts the week)
-  nfl_week = days_since_first_game // 7 + 1
+    # Calculate the difference in days between the input date and the first game date
+    days_since_first_game = (input_date - first_game_date).days
+    logger.info(f"days_since_first_game: {days_since_first_game}")
+    # Calculate the NFL week number (assuming Tuesday starts the week)
+    nfl_week = days_since_first_game // 7 + 1
 
-  return nfl_week
+    return nfl_week
 
 
 def get_current_nfl_season_first_day():
@@ -87,7 +84,7 @@ def get_current_nfl_season_first_day():
         data = json.loads(response.text)
     except json.JSONDecodeError:
         data = response.text  # If the response is not JSON, return the text as is
-        
+
     startDate = ""
     try:
         # Iterate through the "sections" list
@@ -175,7 +172,7 @@ def get_env_var(var_name):
         logger.info("Accessed environment variable")
         return value
     except KeyError:
-        logging.error(f"A required environment variable is not set.")
+        logging.error("A required environment variable is not set.")
         raise
 
 
@@ -183,13 +180,13 @@ def login():
     secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
     username = get_secret(secret_arn, 'mfl-username')
     password = get_secret(secret_arn, 'mfl-password')
-    
+
     url = MFL_LOGIN_URL
     data = {"USERNAME": username, "PASSWORD": password, "XML": 1}
 
     # Send POST request with HTTPS
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    
+
     for attempt in range(1, MAX_RETRIES + 1):
         response = requests.post(url, headers=headers, data=data, verify=True)
         pretty_print_response(response)
@@ -209,7 +206,7 @@ def login():
 
 def get_host():
     url = "https://api.myfantasyleague.com/2024/export?TYPE=league&L=15781&JSON=1"
-    
+
     try:
         response = requests.get(url)
         # TODO: Go back and integrate this baseURL with the rest of the project
@@ -243,7 +240,7 @@ def pretty_print_response(response):
 def build_http_get_request(base_url, cookie, query_params):
     url = f"{base_url}?"
     logging.info(f"url: {url}")
-    cookies = { f"{MFL_USER_COOKIE_KEY}": f"{cookie}" }
+    cookies = {f"{MFL_USER_COOKIE_KEY}": f"{cookie}"}
 
     for attempt in range(1, MAX_RETRIES + 1):
         response = requests.get(url, cookies=cookies, params=query_params, verify=True)
@@ -253,9 +250,8 @@ def build_http_get_request(base_url, cookie, query_params):
         if response.status_code == 200:
             return response
         else:
-            logging.error(f"Attempt #{attempt} to post to messageBoard failed with status code {response.status_code}. Retrying...")
+            logging.error(f"Attempt #{attempt} to post to messageBoard failed with code {response.status_code}. Retrying...")
             time.sleep(SLEEP_SECONDS)
 
     logger.error("ERROR: Maximum number of attempts to post to messageBoard reached. Exiting.")
     sys.exit(1)
-

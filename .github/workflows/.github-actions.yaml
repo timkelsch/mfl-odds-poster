@@ -12,6 +12,10 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+      - name: run-commands
+        run: |
+          pwd
+          ls -al
 
   validate:
     runs-on: ubuntu-latest

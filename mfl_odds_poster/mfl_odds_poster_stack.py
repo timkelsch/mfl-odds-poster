@@ -1,6 +1,5 @@
 from aws_cdk import (
     aws_apigateway as apigw,
-    aws_cloudfront as cloudfront,
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
@@ -197,7 +196,9 @@ class MflOddsPosterStack(Stack):
             # )
         )
 
-        CfnOutput(self, 'CloudFrontDistributionDomainName',
+        CfnOutput(
+            self,
+            'CloudFrontDistributionDomainName',
             value=cfnToAgwToLmb.cloud_front_web_distribution.domain_name
         )
 
@@ -206,8 +207,8 @@ class MflOddsPosterStack(Stack):
             "MyRule",
             schedule=events.Schedule.cron(
                 # minute="59", hour="4", month="*", week_day="5", year="*")
-                minute="0", hour="1", month="*", week_day="5", year="*")
                 # 01:00 every Thursday UTC == 18:00 every Wednesday PT
+                minute="0", hour="1", month="*", week_day="5", year="*")
         )
 
         # Set the Lambda function as the target of the rule
@@ -221,7 +222,7 @@ class MflOddsPosterStack(Stack):
     def create_dependencies_layer(
         self,
         project_name,
-        function_name: str) -> _lambda.LayerVersion:
+            function_name: str) -> _lambda.LayerVersion:
         requirements_file = "lambda/gather_odds/requirements.txt"  # 👈🏽 point to requirements.txt
         output_dir = ".build/app"  # 👈🏽 a temp directory to store the dependencies
 

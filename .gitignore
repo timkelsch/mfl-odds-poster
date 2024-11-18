@@ -2,7 +2,8 @@
 
 # CDK asset staging directory
 .cdk.staging
-cdk.out
+cdk.out/asset*
+cdk.out/.cache
 .build/
 
 # direnv

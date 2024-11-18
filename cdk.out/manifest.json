@@ -1,0 +1,371 @@
+{
+  "version": "36.3.0",
+  "artifacts": {
+    "MflOddsPosterStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "MflOddsPosterStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "MflOddsPosterStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://unknown-account/unknown-region",
+      "properties": {
+        "templateFile": "MflOddsPosterStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/ec3ea8d842ed463d865d52a4c72c7c2beb334bae15d9576641f346bfb7838c9f.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "MflOddsPosterStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-${AWS::Region}",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "MflOddsPosterStack.assets"
+      ],
+      "metadata": {
+        "/MflOddsPosterStack/MyLambdaRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "MyLambdaRole6064C0FA"
+          }
+        ],
+        "/MflOddsPosterStack/MyLambdaRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "MyLambdaRoleDefaultPolicyF04EC3D5"
+          }
+        ],
+        "/MflOddsPosterStack/mflOddsKmsKey": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "mflOddsKmsKey"
+          }
+        ],
+        "/MflOddsPosterStack/mflOdds-ApiKey": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "mflOddsApiKey"
+          }
+        ],
+        "/MflOddsPosterStack/mflOddsSecretResourcePolicy": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "mflOddsSecretResourcePolicy"
+          }
+        ],
+        "/MflOddsPosterStack/lambda--post_odds-post-dependencies/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "lambdapostoddspostdependenciesD74E5801"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaFunctionServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaFunctionServiceRole0C123D8D"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaFunction5DC51B7E"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/ApiAccessLogGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternApiAccessLogGroup9383E9FC"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiC0598E46"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Deployment/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiDeployment4109DB936142ac042f9560f21cea1d93aab946de"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/DeploymentStage.prod/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiDeploymentStageprodFDEB8074"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Endpoint": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiEndpoint9A7AA3AD"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/{proxy+}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiproxyF368A2D5"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/{proxy+}/ANY/ApiPermission.MflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3.ANY..{proxy+}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiproxyANYApiPermissionMflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3ANYproxy4C99ED8C"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/{proxy+}/ANY/ApiPermission.Test.MflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3.ANY..{proxy+}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiproxyANYApiPermissionTestMflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3ANYproxy7D74F219"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/{proxy+}/ANY/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiproxyANY321FD2C2"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/ANY/ApiPermission.MflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3.ANY..": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiANYApiPermissionMflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3ANYCA4B697E"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/ANY/ApiPermission.Test.MflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3.ANY..": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiANYApiPermissionTestMflOddsPosterStackApiGatewayToLambdaPatternLambdaRestApiA315CCB3ANY2CBBA66E"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/Default/ANY/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiANY07ADEFED"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApi/UsagePlan/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiUsagePlan837CF24C"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApiCloudWatchRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiCloudWatchRole3977FB08"
+          }
+        ],
+        "/MflOddsPosterStack/ApiGatewayToLambdaPattern/LambdaRestApiAccount": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGatewayToLambdaPatternLambdaRestApiAccountA31D1168"
+          }
+        ],
+        "/MflOddsPosterStack/lambda--gather_odds-gather-dependencies/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "lambdagatheroddsgatherdependenciesE190E61F"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaFunctionServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaFunctionServiceRole879B3414"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaFunction3FB4AD9F"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/ApiAccessLogGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaApiAccessLogGroup2FD9EE65"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApi9B0A8F07"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Deployment/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiDeployment9D8601B9b553f0181767ba259ca0f5b40f863145"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/DeploymentStage.prod/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiDeploymentStageprodCA95BC8F"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Endpoint": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiEndpoint86FC6FC0"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/{proxy+}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiproxyDAA40A82"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/{proxy+}/ANY/ApiPermission.MflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739E.ANY..{proxy+}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiproxyANYApiPermissionMflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739EANYproxy5C360D11"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/{proxy+}/ANY/ApiPermission.Test.MflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739E.ANY..{proxy+}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiproxyANYApiPermissionTestMflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739EANYproxy7E24A18B"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/{proxy+}/ANY/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiproxyANY87F44F7D"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/ANY/ApiPermission.MflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739E.ANY..": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiANYApiPermissionMflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739EANY0AF847BF"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/ANY/ApiPermission.Test.MflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739E.ANY..": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiANYApiPermissionTestMflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaRestApiFB81739EANY83C3BF9D"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/Default/ANY/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiANY3A5A0BEF"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApi/UsagePlan/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiUsagePlan2D6B039C"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApiCloudWatchRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiCloudWatchRole51BBC337"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/LambdaRestApiAccount": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaLambdaRestApiAccount41E38B7F"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/CloudFrontToApiGateway/SetHttpSecurityHeaders/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaCloudFrontToApiGatewaySetHttpSecurityHeaders9E009886"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/CloudFrontToApiGateway/CloudfrontLoggingBucketAccessLog/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaCloudFrontToApiGatewayCloudfrontLoggingBucketAccessLogDF4AC128"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/CloudFrontToApiGateway/CloudfrontLoggingBucketAccessLog/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaCloudFrontToApiGatewayCloudfrontLoggingBucketAccessLogPolicy3F98D34B"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/CloudFrontToApiGateway/CloudfrontLoggingBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaCloudFrontToApiGatewayCloudfrontLoggingBucketF7A2D3D7"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/CloudFrontToApiGateway/CloudfrontLoggingBucket/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaCloudFrontToApiGatewayCloudfrontLoggingBucketPolicyF747600E"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontApiGatewayToLambda/CloudFrontToApiGateway/CloudFrontDistribution/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontApiGatewayToLambdaCloudFrontToApiGatewayCloudFrontDistributionE7497846"
+          }
+        ],
+        "/MflOddsPosterStack/CloudFrontDistributionDomainName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CloudFrontDistributionDomainName"
+          }
+        ],
+        "/MflOddsPosterStack/MyRule/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "MyRuleA44AB831"
+          }
+        ],
+        "/MflOddsPosterStack/MyRule/AllowEventRuleMflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaFunction06C5B294": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "MyRuleAllowEventRuleMflOddsPosterStackCloudFrontApiGatewayToLambdaLambdaFunction06C5B29424F01C85"
+          }
+        ],
+        "/MflOddsPosterStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/MflOddsPosterStack/CDKMetadata/Condition": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadataAvailable"
+          }
+        ],
+        "/MflOddsPosterStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/MflOddsPosterStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "MflOddsPosterStack"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    }
+  }
+}

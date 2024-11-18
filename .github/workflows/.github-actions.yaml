@@ -28,7 +28,7 @@ jobs:
       # - name: Test with pytest
       #   run: pytest
       - name: Set up Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4.1.0
         # with:
         #   node-version: "16"
       - name: Install Python dependencies and CDK

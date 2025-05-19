@@ -5,7 +5,7 @@ idna==3.10
 python-dateutil==2.9.0.post0
 pytz==2024.2
 requests==2.32.3
-setuptools==75.1.0
+setuptools==78.1.1
 six==1.16.0
 urllib3==2.2.3
 zope.interface==7.0.3

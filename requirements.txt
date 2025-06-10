@@ -25,7 +25,7 @@ publication==0.0.3
 pycodestyle==2.12.1
 python-dateutil==2.9.0.post0
 pytz==2024.2
-requests==2.32.3
+requests==2.32.4
 s3transfer==0.10.2
 six==1.16.0
 typeguard==2.13.3

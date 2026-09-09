@@ -4,9 +4,9 @@ from aws_cdk import (
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
-    aws_kms as kms,
     aws_lambda as _lambda,
     aws_secretsmanager as asm,
+    BundlingOptions,
     CfnOutput,
     Duration,
     Fn,
@@ -15,8 +15,6 @@ from aws_cdk import (
 from aws_solutions_constructs.aws_apigateway_lambda import ApiGatewayToLambda
 from aws_solutions_constructs.aws_cloudfront_apigateway_lambda import CloudFrontToApiGatewayToLambda
 from constructs import Construct
-import os
-import subprocess
 
 
 class MflOddsPosterStack(Stack):
@@ -58,52 +56,10 @@ class MflOddsPosterStack(Stack):
             )
         )
 
-        mfl_odds_kms_key = kms.CfnKey(
-            self,
-            "mflOddsKmsKey",
-            bypass_policy_lockout_safety_check=False,
-            enable_key_rotation=True,
-            enabled=True,
-            key_policy={
-                "Version": "2012-10-17",
-                "Id": "key-default-1",
-                "Statement": [
-                    {
-                        "Sid": "Enable IAM User Permissions",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": Fn.sub("arn:${AWS::Partition}:iam::${AWS::AccountId}:root")
-                        },
-                        "Action": "kms:*",
-                        "Resource": "*"
-                    },
-                    {
-                        "Sid": "Allow use of the key",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": mfl_odds_lambda_role.role_arn
-                        },
-                        "Action": [
-                            "kms:DescribeKey",
-                            "kms:Encrypt",
-                            "kms:Decrypt",
-                            "kms:ReEncrypt*",
-                            "kms:GenerateDataKey",
-                            "kms:GenerateDataKeyWithoutPlaintext"
-                        ],
-                        "Resource": "*"
-                    }
-                ]
-            },
-            multi_region=False,
-            rotation_period_in_days=360,
-        )
-
         mfl_odds_secret = asm.CfnSecret(
             self,
             "mflOdds-ApiKey",
             description="api key for the-odds-api",
-            kms_key_id=mfl_odds_kms_key.attr_key_id,
             name="mflOdds-ApiKey",
             # secret_string='l12345bno1'  # placeholder - manually replace with real secret after deploy
         )
@@ -141,13 +97,21 @@ class MflOddsPosterStack(Stack):
             self,
             'ApiGatewayToLambdaPattern',
             lambda_function_props=_lambda.FunctionProps(
-                # TODO: Add description
                 runtime=_lambda.Runtime.PYTHON_3_11,
-                code=_lambda.Code.from_asset('lambda/post_odds'),
+                code=_lambda.Code.from_asset(
+                    'lambda/post_odds',
+                    bundling=BundlingOptions(
+                        image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                        command=[
+                            'bash', '-c',
+                            'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
+                        ],
+                    ),
+                ),
                 handler='post.lambda_handler',
-                layers=[self.create_dependencies_layer('lambda/post_odds', 'post')],
                 role=mfl_odds_lambda_role,
-                timeout=Duration.seconds(8),
+                # login + host lookup + season API + post, each with retries
+                timeout=Duration.seconds(30),
                 environment={
                     'SECRET_ARN': mfl_odds_secret.attr_id
                 }
@@ -158,16 +122,23 @@ class MflOddsPosterStack(Stack):
             self,
             'CloudFrontApiGatewayToLambda',
             lambda_function_props=_lambda.FunctionProps(
-                # TODO: Add description
                 runtime=_lambda.Runtime.PYTHON_3_11,
                 code=_lambda.Code.from_asset(
                     'lambda/gather_odds',
-                    exclude=['.envrc', 'games.json']
+                    exclude=['.envrc', 'games.json'],
+                    bundling=BundlingOptions(
+                        image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                        command=[
+                            'bash', '-c',
+                            'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
+                        ],
+                    ),
                 ),
                 handler='gather.lambda_handler',
-                layers=[self.create_dependencies_layer('lambda/gather_odds', 'gather')],
                 role=mfl_odds_lambda_role,
-                timeout=Duration.seconds(8),
+                # invokes the poster synchronously, so must exceed its timeout;
+                # 2026-05-14 run hit 7.9s of the old 8s limit
+                timeout=Duration.seconds(60),
                 environment={
                     'SECRET_ARN': mfl_odds_secret.attr_id,
                     'POSTER_LAMBDA_ARN': AgwToLmb.lambda_function.function_arn
@@ -205,9 +176,10 @@ class MflOddsPosterStack(Stack):
             self,
             "MyRule",
             schedule=events.Schedule.cron(
-                # minute="59", hour="4", month="*", week_day="5", year="*")
-                minute="0", hour="1", month="*", week_day="5", year="*")
-                # 01:00 every Thursday UTC == 18:00 every Wednesday PT
+                minute="0", hour="22", month="*", week_day="4", year="*")
+                # 22:00 every Wednesday UTC == 15:00 PT / 16:00 MT Wednesday.
+                # Must precede Wednesday/Thursday kickoffs (2026 opener was a
+                # Wednesday 17:20 PT); the old 01:00 Thursday UTC fired after.
         )
 
         # Set the Lambda function as the target of the rule
@@ -218,26 +190,3 @@ class MflOddsPosterStack(Stack):
             role=mfl_odds_lambda_role
         )
 
-    def create_dependencies_layer(
-        self,
-        project_name,
-        function_name: str) -> _lambda.LayerVersion:
-        requirements_file = "lambda/gather_odds/requirements.txt"  # 👈🏽 point to requirements.txt
-        output_dir = ".build/app"  # 👈🏽 a temp directory to store the dependencies
-
-        if not os.environ.get("SKIP_PIP"):
-            # 👇🏽 download the dependencies and store them in the output_dir
-            subprocess.check_call(
-                f"pip install -r {requirements_file} -t {output_dir}/python".split()
-            )
-
-        layer_id = f"{project_name}-{function_name}-dependencies"  # 👈🏽 a unique id for the layer
-        layer_code = _lambda.Code.from_asset(output_dir)  # 👈🏽 import the dependencies / code
-
-        my_layer = _lambda.LayerVersion(
-            self,
-            layer_id,
-            code=layer_code,
-        )
-
-        return my_layer

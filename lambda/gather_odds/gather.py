@@ -10,7 +10,6 @@ import boto3
 import pytz
 import requests
 from dateutil.parser import isoparse
-from get_secret_value import GetSecretWrapper
 
 PT_TIME_ZOME = pytz.timezone('US/Pacific')
 POSTER_LAMBDA_ARN = "POSTER_LAMBDA_ARN"
@@ -19,8 +18,8 @@ REQUEST_TIMEOUT_SECONDS = 10
 # https://the-odds-api.com/liveapi/guides/v4/#overview
 API_BASE_URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/"
 API_PARAMETERS = "?regions=us&markets=spreads,totals&bookmakers=draftkings&apiKey="
-ENV_VAR_SECRET_ARN = "SECRET_ARN"
-SUBSECRET_KEY = "the-odds-api-key"
+ENV_VAR_CONFIG_PARAMETER = "CONFIG_PARAMETER_NAME"
+CONFIG_KEY_ODDS_API = "the-odds-api-key"
 # checkov:skip=CKV_SECRET_6: not a secret
 
 logging.basicConfig(level=logging.INFO)
@@ -182,7 +181,8 @@ def format_games(formatted_games: list, newline_symbol: str) -> str:
         else:
             buffer.write(f"{game['away_team']}{newline_symbol}")
             buffer.write(
-                f"{game['home_team']} | {game['point_spread']} | {game['totals_point']}{newline_symbol}{newline_symbol}")
+                f"{game['home_team']} | {game['point_spread']} | {game['totals_point']}"
+                f"{newline_symbol}{newline_symbol}")
 
     return buffer.getvalue()
 
@@ -202,28 +202,22 @@ def adjust_float(num: float) -> float:
     return num
 
 
-def get_secret(secret_name: str, subsecret_key: str) -> str:
-    """Retrieve one key from a JSON secret in AWS Secrets Manager.
+def get_config(key: str) -> str:
+    """Read one key from the JSON SecureString named in ``CONFIG_PARAMETER_NAME``.
 
     Args:
-        secret_name: Secret name or ARN.
-        subsecret_key: Key inside the JSON secret string.
+        key: Key inside the JSON parameter value.
 
     Returns:
-        str: The secret value. Never log it.
+        str: The value. Never log it.
 
     Raises:
-        ValueError: If ``secret_name`` is empty.
-        botocore.exceptions.ClientError: If the secret cannot be read.
-        json.JSONDecodeError: If the secret string is not JSON.
-        KeyError: If ``subsecret_key`` is not in the secret.
+        KeyError: If ``CONFIG_PARAMETER_NAME`` is unset or ``key`` is missing.
+        botocore.exceptions.ClientError: If the parameter cannot be read.
     """
-    if not secret_name:
-        raise ValueError("Secret name must be provided.")
-    client = boto3.client("secretsmanager")
-    wrapper = GetSecretWrapper(client)
-    secret_data = json.loads(wrapper.get_secret(secret_name))
-    return secret_data[subsecret_key]
+    parameter_name = get_env_var(ENV_VAR_CONFIG_PARAMETER)
+    response = boto3.client("ssm").get_parameter(Name=parameter_name, WithDecryption=True)
+    return json.loads(response["Parameter"]["Value"])[key]
 
 
 def get_env_var(var_name: str) -> str:
@@ -250,7 +244,7 @@ def main(newline_symbol: str, source: str | None = None) -> dict:
     Args:
         newline_symbol: Line separator for the rendered text.
         source: Optional local file or URL; when omitted, the-odds-api is
-            queried with the key from Secrets Manager.
+            queried with the key from SSM Parameter Store.
 
     Returns:
         dict: API-Gateway-style response with the text in ``body``.
@@ -259,8 +253,7 @@ def main(newline_symbol: str, source: str | None = None) -> dict:
         logging.info("Using local source: %s", source)
         games_data = fetch_game_data(source)
     else:
-        secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
-        url = API_BASE_URL + API_PARAMETERS + get_secret(secret_arn, SUBSECRET_KEY)
+        url = API_BASE_URL + API_PARAMETERS + get_config(CONFIG_KEY_ODDS_API)
         logging.info("Using API URL: %s", API_BASE_URL + API_PARAMETERS)
         games_data = fetch_game_data(url)
 

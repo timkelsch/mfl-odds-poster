@@ -15,17 +15,17 @@ MAX_RETRIES = 3
 SLEEP_SECONDS = 3
 REQUEST_TIMEOUT_SECONDS = 5
 MFL_API_HOST = "https://api.myfantasyleague.com"
-ENV_VAR_SECRET_ARN = "SECRET_ARN"
+ENV_VAR_CONFIG_PARAMETER = "CONFIG_PARAMETER_NAME"
+ENV_VAR_LEAGUE_ID = "LEAGUE_ID"
+ENV_VAR_FRANCHISE_ID = "FRANCHISE_ID"
 # checkov:skip=CKV_SECRET_6: not a secret
 NFL_API_URL = "https://nfl-football-api.p.rapidapi.com/nfl-whitelist"
 NFL_API_HOST = "nfl-football-api.p.rapidapi.com"
-SUBSECRET_KEY_NFL_API_API_KEY = "nfl-api-key"
+CONFIG_KEY_NFL_API_API_KEY = "nfl-api-key"
 
 MFL_USER_COOKIE_KEY = "MFL_USER_ID"
 REQUEST_TYPE = "messageBoard"
 API = "import"
-LEAGUE_ID = "15781"
-FRANCHISE_ID = "0008"
 THREAD = ""  # "6480193" == test thread
 
 
@@ -60,6 +60,9 @@ def lambda_handler(event: dict, _context: object) -> dict:
 
     Raises:
         ValueError: If the event does not carry an odds body.
+        KeyError: If ``LEAGUE_ID`` or ``FRANCHISE_ID`` is not set. There is
+            deliberately no default, so a misconfigured stack cannot post to
+            the prod league.
         RuntimeError: If MFL login, host lookup, or the post itself fails.
     """
     try:
@@ -67,8 +70,12 @@ def lambda_handler(event: dict, _context: object) -> dict:
     except (KeyError, TypeError) as exc:
         raise ValueError("Event is missing ['body']['body'] from the gather lambda") from exc
 
+    league_id = get_env_var(ENV_VAR_LEAGUE_ID)
+    franchise_id = get_env_var(ENV_VAR_FRANCHISE_ID)
+    logger.info("Posting to league %s as franchise %s", league_id, franchise_id)
+
     cookie = login()
-    host = get_host()
+    host = get_host(league_id)
 
     first_day_regular_season = get_current_nfl_season_first_day()
     week_1_start_date, _ = get_week_start_end(first_day_regular_season)
@@ -76,7 +83,7 @@ def lambda_handler(event: dict, _context: object) -> dict:
     subject = f"Week {week}: Three-Leg Parlay"
     logger.info("subject: %s", subject)
 
-    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, subject, body)
+    query_object = build_query_object(REQUEST_TYPE, league_id, franchise_id, THREAD, subject, body)
     response = build_http_get_request(f"{host}/{YEAR}/{API}", cookie, query_object)
     return {"statusCode": response.status_code, "body": response.text}
 
@@ -126,8 +133,7 @@ def fetch_season_first_day_from_api() -> datetime.datetime:
             (403 means the RapidAPI subscription is inactive).
         ValueError: If the body is not JSON or lacks a Regular Season / Week 1 entry.
     """
-    secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
-    api_key = get_secret(secret_arn, SUBSECRET_KEY_NFL_API_API_KEY)
+    api_key = get_config(CONFIG_KEY_NFL_API_API_KEY)
     headers = {"rapidapi-host": NFL_API_HOST, "rapidapi-key": api_key}
     response = requests.get(NFL_API_URL, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
     response.raise_for_status()
@@ -214,27 +220,22 @@ def build_query_object(request_type: str, league_id: str, franchise_id: str,
     }
 
 
-def get_secret(secret_name: str, subsecret_key: str) -> str:
-    """Retrieve one key from a JSON secret in AWS Secrets Manager.
+def get_config(key: str) -> str:
+    """Read one key from the JSON SecureString named in ``CONFIG_PARAMETER_NAME``.
 
     Args:
-        secret_name: Secret name or ARN.
-        subsecret_key: Key inside the JSON secret string.
+        key: Key inside the JSON parameter value.
 
     Returns:
-        str: The secret value. Never log it.
+        str: The value. Never log it.
 
     Raises:
-        ValueError: If ``secret_name`` is empty.
-        botocore.exceptions.ClientError: If the secret cannot be read.
-        KeyError: If ``subsecret_key`` is not in the secret.
+        KeyError: If ``CONFIG_PARAMETER_NAME`` is unset or ``key`` is missing.
+        botocore.exceptions.ClientError: If the parameter cannot be read.
     """
-    if not secret_name:
-        raise ValueError("Secret name must be provided.")
-    client = boto3.client("secretsmanager")
-    response = client.get_secret_value(SecretId=secret_name)
-    secret_data = json.loads(response["SecretString"])
-    return secret_data[subsecret_key]
+    parameter_name = get_env_var(ENV_VAR_CONFIG_PARAMETER)
+    response = boto3.client("ssm").get_parameter(Name=parameter_name, WithDecryption=True)
+    return json.loads(response["Parameter"]["Value"])[key]
 
 
 def get_env_var(var_name: str) -> str:
@@ -264,9 +265,8 @@ def login() -> str:
     Raises:
         RuntimeError: If no attempt yields a 200 with a session cookie.
     """
-    secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
-    username = get_secret(secret_arn, "mfl-username")
-    password = get_secret(secret_arn, "mfl-password")
+    username = get_config("mfl-username")
+    password = get_config("mfl-password")
 
     url = f"{MFL_API_HOST}/{YEAR}/login?"
     data = {"USERNAME": username, "PASSWORD": password, "XML": 1}
@@ -286,11 +286,14 @@ def login() -> str:
     raise RuntimeError(f"MFL login failed after {MAX_RETRIES} attempts")
 
 
-def get_host() -> str:
+def get_host(league_id: str) -> str:
     """Look up the league's API host for the current season.
 
     MFL leagues live on a numbered host (``https://wwwNN.myfantasyleague.com``)
     that can change between seasons.
+
+    Args:
+        league_id: MFL league id.
 
     Returns:
         str: League base URL.
@@ -298,13 +301,13 @@ def get_host() -> str:
     Raises:
         RuntimeError: If the league export fails or has no ``baseURL``.
     """
-    url = f"{MFL_API_HOST}/{YEAR}/export?TYPE=league&L={LEAGUE_ID}&JSON=1"
+    url = f"{MFL_API_HOST}/{YEAR}/export?TYPE=league&L={league_id}&JSON=1"
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         base_url = response.json()["league"]["baseURL"]
     except (requests.RequestException, ValueError, KeyError) as exc:
-        raise RuntimeError(f"Cannot obtain MFL API host for league {LEAGUE_ID}, season {YEAR}") from exc
+        raise RuntimeError(f"Cannot obtain MFL API host for league {league_id}, season {YEAR}") from exc
     if not base_url:
         raise RuntimeError("MFL league export returned an empty baseURL")
     return base_url

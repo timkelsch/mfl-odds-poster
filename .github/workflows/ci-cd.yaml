@@ -1,0 +1,85 @@
+name: CI/CD
+
+# PRs: unit tests, deploy the test stack, e2e against MFL copy league 22744.
+# main: the same, then deploy prod only if e2e passed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write   # GitHub OIDC -> AWS role (no long-lived keys)
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  CDK_VERSION: "2.1146.1"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm   # native arm64, matches the Graviton lambdas' bundled wheels
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: flake8 --max-line-length 120 app.py mfl_odds_poster lambda tests
+      - run: pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install -g aws-cdk@${{ env.CDK_VERSION }}
+      - run: cdk synth --quiet
+
+  e2e:
+    needs: test
+    runs-on: ubuntu-24.04-arm
+    concurrency:
+      group: test-stack       # one run at a time on the test stack + test league
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install -g aws-cdk@${{ env.CDK_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::287140326780:role/mfl-odds-poster-ci
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy test stack
+        run: cdk deploy MflOddsPosterStackTest --require-approval never
+      - name: E2E against MFL league 22744
+        run: pytest -m e2e -v
+
+  deploy-prod:
+    needs: e2e
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    concurrency:
+      group: prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install -g aws-cdk@${{ env.CDK_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::287140326780:role/mfl-odds-poster-ci
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy prod
+        run: cdk deploy MflOddsPosterStack --require-approval never

@@ -100,8 +100,7 @@ def test_season_first_day_uses_api_when_current(monkeypatch: pytest.MonkeyPatch)
 
 def test_fetch_season_first_day_parses_week_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """Week 1 start is read from the Regular Season section."""
-    monkeypatch.setattr(post, "get_env_var", lambda _name: "secret")
-    monkeypatch.setattr(post, "get_secret", lambda _arn, _key: "k")
+    monkeypatch.setattr(post, "get_config", lambda _key: "k")
     payload = {"sections": [
         {"label": "Preseason", "entries": [{"label": "Week 1", "startDate": "2026-08-06T07:00Z"}]},
         {"label": "Regular Season", "entries": [{"label": "Week 1", "startDate": "2026-09-09T07:00Z"}]},
@@ -112,8 +111,7 @@ def test_fetch_season_first_day_parses_week_one(monkeypatch: pytest.MonkeyPatch)
 
 def test_fetch_season_first_day_missing_week_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """A response without Week 1 raises instead of returning garbage."""
-    monkeypatch.setattr(post, "get_env_var", lambda _name: "secret")
-    monkeypatch.setattr(post, "get_secret", lambda _arn, _key: "k")
+    monkeypatch.setattr(post, "get_config", lambda _key: "k")
     monkeypatch.setattr(post.requests, "get",
                         lambda *_a, **_k: _FakeResponse({"sections": [{"label": "Regular Season", "entries": []}]}))
     with pytest.raises(ValueError):
@@ -123,8 +121,7 @@ def test_fetch_season_first_day_missing_week_one(monkeypatch: pytest.MonkeyPatch
 def test_login_retries_until_cookie_and_never_logs_it(monkeypatch: pytest.MonkeyPatch,
                                                       caplog: pytest.LogCaptureFixture) -> None:
     """A 200 without a cookie is a failed attempt; the cookie never hits the logs."""
-    monkeypatch.setattr(post, "get_env_var", lambda _name: "secret")
-    monkeypatch.setattr(post, "get_secret", lambda _arn, key: key)
+    monkeypatch.setattr(post, "get_config", lambda key: key)
     monkeypatch.setattr(post.time, "sleep", lambda _s: None)
     attempts = [
         _FakeResponse(status=200, text="<status>Bad password</status>"),
@@ -138,8 +135,7 @@ def test_login_retries_until_cookie_and_never_logs_it(monkeypatch: pytest.Monkey
 
 def test_login_gives_up(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exhausting retries raises rather than calling sys.exit."""
-    monkeypatch.setattr(post, "get_env_var", lambda _name: "secret")
-    monkeypatch.setattr(post, "get_secret", lambda _arn, key: key)
+    monkeypatch.setattr(post, "get_config", lambda key: key)
     monkeypatch.setattr(post.time, "sleep", lambda _s: None)
     monkeypatch.setattr(post.requests, "post", lambda *_a, **_k: _FakeResponse(status=500))
     with pytest.raises(RuntimeError, match="login failed"):
@@ -150,14 +146,14 @@ def test_get_host_reads_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     """The league export's baseURL is returned verbatim."""
     monkeypatch.setattr(post.requests, "get",
                         lambda *_a, **_k: _FakeResponse({"league": {"baseURL": "https://www46.example"}}))
-    assert post.get_host() == "https://www46.example"
+    assert post.get_host("22744") == "https://www46.example"
 
 
 def test_get_host_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """A failed export raises instead of returning None."""
     monkeypatch.setattr(post.requests, "get", lambda *_a, **_k: _FakeResponse(status=503))
     with pytest.raises(RuntimeError, match="Cannot obtain MFL API host"):
-        post.get_host()
+        post.get_host("22744")
 
 
 def test_post_rejected_by_mfl_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,3 +176,73 @@ def test_lambda_handler_requires_body() -> None:
     """A malformed event fails fast, before logging in."""
     with pytest.raises(ValueError):
         post.lambda_handler({"body": {}}, None)
+
+
+class _FakeSsm:
+    """Records GetParameter calls and returns a canned JSON config."""
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+        self.calls: list[dict] = []
+
+    def get_parameter(self, **kwargs) -> dict:
+        """Mimic ssm.get_parameter."""
+        self.calls.append(kwargs)
+        return {"Parameter": {"Value": self.value}}
+
+
+def test_get_config_reads_decrypted_ssm_parameter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Config comes from the SecureString named in CONFIG_PARAMETER_NAME."""
+    fake = _FakeSsm('{"mfl-username": "u", "mfl-password": "p"}')
+    monkeypatch.setenv("CONFIG_PARAMETER_NAME", "/mfl-odds/test")
+    monkeypatch.setattr(post.boto3, "client", lambda service: fake if service == "ssm" else None)
+    assert post.get_config("mfl-username") == "u"
+    assert fake.calls == [{"Name": "/mfl-odds/test", "WithDecryption": True}]
+
+
+def test_get_config_requires_parameter_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No parameter name configured fails loudly."""
+    monkeypatch.delenv("CONFIG_PARAMETER_NAME", raising=False)
+    with pytest.raises(KeyError, match="CONFIG_PARAMETER_NAME"):
+        post.get_config("mfl-username")
+
+
+def _stub_handler_io(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Stub login/host/season/post; return the list that captures (url, query)."""
+    sent: list = []
+    monkeypatch.setattr(post, "login", lambda: "cookie")
+    monkeypatch.setattr(post, "get_host", lambda league_id: f"https://host-for-{league_id}")
+    monkeypatch.setattr(post, "get_current_nfl_season_first_day",
+                        lambda: dt.datetime(2026, 9, 10, 7, tzinfo=UTC))
+
+    def fake_post(url: str, _cookie: str, query: dict) -> _FakeResponse:
+        sent.append((url, query))
+        return _FakeResponse(status=200, text='{"status": "OK"}')
+
+    monkeypatch.setattr(post, "build_http_get_request", fake_post)
+    return sent
+
+
+def test_lambda_handler_posts_to_configured_league(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LEAGUE_ID / FRANCHISE_ID from the env drive the host lookup and the import query."""
+    monkeypatch.setenv("LEAGUE_ID", "22744")
+    monkeypatch.setenv("FRANCHISE_ID", "0008")
+    sent = _stub_handler_io(monkeypatch)
+    post.lambda_handler({"body": {"body": "odds"}}, None)
+    (url, query), = sent
+    assert url.startswith("https://host-for-22744/")
+    assert query["L"] == "22744"
+    assert query["FRANCHISE_ID"] == "0008"
+    assert query["BODY"] == "odds"
+
+
+@pytest.mark.parametrize("missing", ["LEAGUE_ID", "FRANCHISE_ID"])
+def test_lambda_handler_has_no_league_default(monkeypatch: pytest.MonkeyPatch, missing: str) -> None:
+    """A missing league/franchise must never fall back to the prod league."""
+    monkeypatch.setenv("LEAGUE_ID", "22744")
+    monkeypatch.setenv("FRANCHISE_ID", "0008")
+    monkeypatch.delenv(missing)
+    sent = _stub_handler_io(monkeypatch)
+    with pytest.raises(KeyError, match=missing):
+        post.lambda_handler({"body": {"body": "odds"}}, None)
+    assert sent == []

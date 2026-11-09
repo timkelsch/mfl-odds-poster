@@ -22,8 +22,8 @@ def _game(away: str, home: str, commence_utc: str, spread_team: str | None = Non
         outcomes = [{"name": spread_team, "point": spread}, {"name": other, "point": -spread}]
     markets = {
         "spreads": {"key": "spreads", "outcomes": outcomes},
-        "totals": {"key": "totals", "outcomes": [{"name": "Over", "point": total},
-                                                  {"name": "Under", "point": total}]},
+        "totals": {"key": "totals", "outcomes": [
+            {"name": "Over", "point": total}, {"name": "Under", "point": total}]},
     }
     return {
         "commence_time": commence_utc,
@@ -110,13 +110,14 @@ def test_format_games_groups_by_day_and_marks_favorite() -> None:
     assert "Dallas Cowboys | -3.5 | 48.5\nNew York Giants\n" in text
 
 
-def test_main_with_local_source_needs_no_secret(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The CLI path reads a file and never touches Secrets Manager."""
-    monkeypatch.delenv("SECRET_ARN", raising=False)
+def test_main_with_local_source_needs_no_config(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI path reads a file and never touches SSM."""
+    monkeypatch.delenv("CONFIG_PARAMETER_NAME", raising=False)
     source = tmp_path / "games.json"
     source.write_text('[{"commence_time": "2026-09-13T17:00:00Z", "away_team": "Away", "home_team": "Home", '
                       '"bookmakers": [{"key": "draftkings", "markets": ['
-                      '{"key": "spreads", "outcomes": [{"name": "Away", "point": -3.5}, {"name": "Home", "point": 3.5}]}, '
+                      '{"key": "spreads", "outcomes": [{"name": "Away", "point": -3.5}, '
+                      '{"name": "Home", "point": 3.5}]}, '
                       '{"key": "totals", "outcomes": [{"name": "Over", "point": 41.5}]}]}]}]', encoding="utf-8")
 
     class _FixedDatetime(datetime):
@@ -129,3 +130,18 @@ def test_main_with_local_source_needs_no_secret(tmp_path, monkeypatch: pytest.Mo
     monkeypatch.setattr(gather, "datetime", _FixedDatetime)
     body = gather.main("\n", str(source))["body"]
     assert "Away | -3.5 | 41.5" in body
+
+
+def test_get_config_reads_decrypted_ssm_parameter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The odds API key comes from the SecureString named in CONFIG_PARAMETER_NAME."""
+    calls: list = []
+
+    class _FakeSsm:
+        def get_parameter(self, **kwargs) -> dict:
+            calls.append(kwargs)
+            return {"Parameter": {"Value": '{"the-odds-api-key": "abc"}'}}
+
+    monkeypatch.setenv("CONFIG_PARAMETER_NAME", "/mfl-odds/test")
+    monkeypatch.setattr(gather.boto3, "client", lambda service: _FakeSsm())
+    assert gather.get_config("the-odds-api-key") == "abc"
+    assert calls == [{"Name": "/mfl-odds/test", "WithDecryption": True}]

@@ -41,7 +41,11 @@ to lambda and vice versa.
 1. API Host
 1. NFL year start date
 
-# Secret Format
+# Config (SSM Parameter Store)
+
+Each stack reads one SecureString parameter (free `aws/ssm` key):
+`/mfl-odds/prod` for `MflOddsPosterStack` and `/mfl-odds/test` for `MflOddsPosterStackTest`.
+CloudFormation can't create SecureStrings, so create each one once by hand:
 
 ```
 {
@@ -51,6 +55,34 @@ to lambda and vice versa.
   "nfl-api-key": ""
 }
 ```
+
+`/mfl-odds/test` holds the credentials of the MFL account that owns the copy league, not
+the prod login.
+
+# Stacks
+
+| Stack | League | Schedule | Deployed by |
+|---|---|---|---|
+| `MflOddsPosterStack` | 15781 (prod) | Wed 22:00 UTC, Sep-Feb | CI, on merge to `main` after e2e passes |
+| `MflOddsPosterStackTest` | 22744 (MFL copy league) | none | CI, on every PR and push to `main` |
+| `MflOddsPosterCiStack` | - | - | by hand, once (GitHub OIDC role) |
+
+# Tests
+
+All changes are test-driven: write the failing test first.
+
+- `pytest` runs the unit tests (no network).
+- `pytest -m e2e` deploys nothing. It invokes the already-deployed test stack, which posts to
+  copy league 22744, then reads the 22744 message board and checks that the post matches.
+  Run it locally with `AWS_PROFILE=pmfl pytest -m e2e` after
+  `cdk deploy MflOddsPosterStackTest`.
+  It refuses to run unless the deployed poster targets league 22744.
+  "Notify on new message board post" is turned off for every team in the copy league.
+
+# CI/CD (`.github/workflows/ci-cd.yaml`)
+
+`test` (lint, unit, synth) -> `e2e` (deploy test stack, run e2e) -> `deploy-prod` (main only).
+AWS access is through GitHub OIDC, assuming the `mfl-odds-poster-ci` role (fixed name, ARN hardcoded in `ci-cd.yaml`; no repo variables or secrets).
 
 # Env of Notes
 

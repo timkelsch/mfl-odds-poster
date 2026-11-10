@@ -25,7 +25,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: flake8 --max-line-length 120 app.py mfl_odds_poster lambda tests
+      - run: flake8 --max-line-length 120 app.py mfl_odds_poster lambda tests scripts
       - run: pytest
       - uses: actions/setup-node@v7
         with:

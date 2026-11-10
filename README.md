@@ -124,3 +124,14 @@ command.
 - `cdk docs` open CDK documentation
 
 Enjoy!
+
+### One-time cleanup after the first lean prod deploy
+
+```
+.venv/bin/python scripts/cleanup_old_prod.py           # dry run: shows what would go
+.venv/bin/python scripts/cleanup_old_prod.py --apply   # deletes it
+```
+
+Removes the old CloudFront log buckets and old lambda/API log groups the previous stack left behind, and closes the
+Dependabot PRs superseded by #11. It refuses to run until `MflOddsPosterStack` is `UPDATE_COMPLETE` with the new
+lambdas and none of the old resources, and skips anything a live stack still manages.

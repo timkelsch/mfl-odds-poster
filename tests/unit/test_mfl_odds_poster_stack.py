@@ -130,3 +130,15 @@ def test_non_prod_stack_refuses_prod_league() -> None:
     """A test stack pointed at the real league must fail at synth time."""
     with pytest.raises(ValueError, match="prod league"):
         _synth("MflOddsPosterStackTest", env_name="test", league_id=PROD_LEAGUE_ID)
+
+
+@pytest.mark.parametrize("fixture", ["prod", "test_stack"])
+def test_lambdas_never_auto_retry_async_invocations(fixture: str, request: pytest.FixtureRequest) -> None:
+    """A Lambda async retry after a successful post would re-post and re-notify owners."""
+    template = request.getfixturevalue(fixture)
+    configs = template.find_resources("AWS::Lambda::EventInvokeConfig")
+    retried = {cfg["Properties"]["FunctionName"]["Ref"]: cfg["Properties"]["MaximumRetryAttempts"]
+               for cfg in configs.values()}
+    functions = template.find_resources("AWS::Lambda::Function")
+    assert set(retried) == set(functions), "every lambda needs an explicit retry config"
+    assert set(retried.values()) == {0}

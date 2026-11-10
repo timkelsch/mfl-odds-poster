@@ -81,6 +81,8 @@ class MflOddsPosterStack(Stack):
                 "FRANCHISE_ID": FRANCHISE_ID,
             },
             log_group=logs.LogGroup(self, "PosterLogs", retention=logs.RetentionDays.ONE_MONTH),
+            # never re-run after a failure: the post may already be on the board
+            retry_attempts=0,
         )
 
         gather = _lambda.Function(
@@ -96,6 +98,8 @@ class MflOddsPosterStack(Stack):
                 "POSTER_LAMBDA_ARN": poster.function_arn,
             },
             log_group=logs.LogGroup(self, "GatherLogs", retention=logs.RetentionDays.ONE_MONTH),
+            # EventBridge invokes async; a retry after the poster succeeded would double-post
+            retry_attempts=0,
         )
         poster.add_to_role_policy(read_config)
         gather.add_to_role_policy(read_config)

@@ -1,243 +1,121 @@
+"""Odds poster stack: gather lambda -> poster lambda, on a weekly in-season schedule."""
 from aws_cdk import (
-    aws_apigateway as apigw,
-    aws_cloudfront as cloudfront,
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
-    aws_kms as kms,
     aws_lambda as _lambda,
-    aws_secretsmanager as asm,
+    aws_logs as logs,
+    BundlingOptions,
     CfnOutput,
     Duration,
-    Fn,
-    Stack
+    Stack,
 )
-from aws_solutions_constructs.aws_apigateway_lambda import ApiGatewayToLambda
-from aws_solutions_constructs.aws_cloudfront_apigateway_lambda import CloudFrontToApiGatewayToLambda
 from constructs import Construct
-import os
-import subprocess
+
+PROD_LEAGUE_ID = "15781"
+FRANCHISE_ID = "0008"
+# One MFL login owns both leagues, so prod and test share one parameter.
+CONFIG_PARAMETER = "/mfl-odds"
+RUNTIME = _lambda.Runtime.PYTHON_3_11
+ARCHITECTURE = _lambda.Architecture.ARM_64
+
+
+def _code(path: str, exclude: list[str] | None = None) -> _lambda.Code:
+    """Bundle a lambda directory with its requirements for arm64.
+
+    Args:
+        path: Lambda source directory.
+        exclude: Glob patterns to leave out of the asset.
+
+    Returns:
+        _lambda.Code: Asset code.
+    """
+    return _lambda.Code.from_asset(
+        path,
+        exclude=["__pycache__", *(exclude or [])],
+        bundling=BundlingOptions(
+            image=RUNTIME.bundling_image,
+            platform="linux/arm64",
+            command=["bash", "-c",
+                     "pip install --no-cache-dir -r requirements.txt -t /asset-output && cp -r . /asset-output"],
+        ),
+    )
 
 
 class MflOddsPosterStack(Stack):
+    """Gather + poster lambdas for one MFL league.
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    Args:
+        scope: CDK scope.
+        construct_id: Stack id.
+        env_name: ``prod`` or ``test``. Only prod gets a schedule.
+        league_id: MFL league to post to.
+        **kwargs: Passed to :class:`aws_cdk.Stack`.
+
+    Raises:
+        ValueError: If a non-prod stack is pointed at the prod league.
+    """
+
+    def __init__(self, scope: Construct, construct_id: str, *, env_name: str, league_id: str,
+                 **kwargs) -> None:
+        if env_name != "prod" and league_id == PROD_LEAGUE_ID:
+            raise ValueError(f"{env_name} stack must never target the prod league {PROD_LEAGUE_ID}")
         super().__init__(scope, construct_id, **kwargs)
 
-        mfl_odds_lambda_role = iam.Role(
-            self,
-            "MyLambdaRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-        )
+        parameter_name = CONFIG_PARAMETER
+        # SecureString parameters cannot be created by CloudFormation; created once by hand.
+        parameter_arn = self.format_arn(service="ssm", resource="parameter",
+                                        resource_name=parameter_name.lstrip("/"))
 
-        mfl_odds_lambda_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=[
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                ],
-                resources=[Fn.sub("arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*")],
-                effect=iam.Effect.ALLOW
-            )
-        )
+        read_config = iam.PolicyStatement(actions=["ssm:GetParameter"], resources=[parameter_arn])
 
-        mfl_odds_lambda_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["secretsmanager:GetSecretValue"],
-                resources=[Fn.sub("arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:MflOddsPosterStack-CloudFrontApiGatewayToLambdaLam*")]
-            )
-        )
-
-        mfl_odds_lambda_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["lambda:InvokeFunction"],
-                resources=[Fn.sub("arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:MflOddsPosterStack-ApiGatewayToLambdaPatternLambda-*")]
-            )
-        )
-
-        mfl_odds_kms_key = kms.CfnKey(
-            self,
-            "mflOddsKmsKey",
-            bypass_policy_lockout_safety_check=False,
-            enable_key_rotation=True,
-            enabled=True,
-            key_policy={
-                "Version": "2012-10-17",
-                "Id": "key-default-1",
-                "Statement": [
-                    {
-                        "Sid": "Enable IAM User Permissions",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": Fn.sub("arn:${AWS::Partition}:iam::${AWS::AccountId}:root")
-                        },
-                        "Action": "kms:*",
-                        "Resource": "*"
-                    },
-                    {
-                        "Sid": "Allow use of the key",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": mfl_odds_lambda_role.role_arn
-                        },
-                        "Action": [
-                            "kms:DescribeKey",
-                            "kms:Encrypt",
-                            "kms:Decrypt",
-                            "kms:ReEncrypt*",
-                            "kms:GenerateDataKey",
-                            "kms:GenerateDataKeyWithoutPlaintext"
-                        ],
-                        "Resource": "*"
-                    }
-                ]
+        poster = _lambda.Function(
+            self, "PosterFunction",
+            runtime=RUNTIME,
+            architecture=ARCHITECTURE,
+            code=_code("lambda/post_odds", exclude=["nfl-schedule.json"]),
+            handler="post.lambda_handler",
+            # login + host lookup + season API + post, each with retries
+            timeout=Duration.seconds(30),
+            environment={
+                "CONFIG_PARAMETER_NAME": parameter_name,
+                "LEAGUE_ID": league_id,
+                "FRANCHISE_ID": FRANCHISE_ID,
             },
-            multi_region=False,
-            rotation_period_in_days=360,
+            log_group=logs.LogGroup(self, "PosterLogs", retention=logs.RetentionDays.ONE_MONTH),
+            # never re-run after a failure: the post may already be on the board
+            retry_attempts=0,
         )
 
-        mfl_odds_secret = asm.CfnSecret(
-            self,
-            "mflOdds-ApiKey",
-            description="api key for the-odds-api",
-            kms_key_id=mfl_odds_kms_key.attr_key_id,
-            name="mflOdds-ApiKey",
-            # secret_string='l12345bno1'  # placeholder - manually replace with real secret after deploy
+        gather = _lambda.Function(
+            self, "GatherFunction",
+            runtime=RUNTIME,
+            architecture=ARCHITECTURE,
+            code=_code("lambda/gather_odds", exclude=[".envrc", "games.json"]),
+            handler="gather.lambda_handler",
+            # invokes the poster synchronously, so must exceed its timeout
+            timeout=Duration.seconds(60),
+            environment={
+                "CONFIG_PARAMETER_NAME": parameter_name,
+                "POSTER_LAMBDA_ARN": poster.function_arn,
+            },
+            log_group=logs.LogGroup(self, "GatherLogs", retention=logs.RetentionDays.ONE_MONTH),
+            # EventBridge invokes async; a retry after the poster succeeded would double-post
+            retry_attempts=0,
         )
+        poster.add_to_role_policy(read_config)
+        gather.add_to_role_policy(read_config)
+        poster.grant_invoke(gather)
 
-        mfl_odds_secret_resource_policy = asm.CfnResourcePolicy(
-            self,
-            "mflOddsSecretResourcePolicy",
-            block_public_policy=True,
-            resource_policy={
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": Fn.sub("arn:${AWS::Partition}:iam::${AWS::AccountId}:root")
-                    },
-                    "Action": "secretsmanager:*",
-                    "Resource": "*"
-                }, {
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": mfl_odds_lambda_role.role_arn
-                    },
-                    "Action": [
-                        "secretsmanager:DescribeSecret",
-                        "secretsmanager:Get*",
-                        "secretsmanager:List*"
-                    ],
-                    "Resource": mfl_odds_secret.attr_id
-                }]
-            },  # Required
-            secret_id=mfl_odds_secret.attr_id  # Required
-        )
-
-        AgwToLmb = ApiGatewayToLambda(
-            self,
-            'ApiGatewayToLambdaPattern',
-            lambda_function_props=_lambda.FunctionProps(
-                # TODO: Add description
-                runtime=_lambda.Runtime.PYTHON_3_11,
-                code=_lambda.Code.from_asset('lambda/post_odds'),
-                handler='post.lambda_handler',
-                layers=[self.create_dependencies_layer('lambda/post_odds', 'post')],
-                role=mfl_odds_lambda_role,
-                timeout=Duration.seconds(8),
-                environment={
-                    'SECRET_ARN': mfl_odds_secret.attr_id
-                }
+        if env_name == "prod":
+            rule = events.Rule(
+                self, "MyRule",
+                # 22:00 UTC Wednesdays (15:00 PT), before any Wed/Thu kickoff.
+                # Months 9-12 and 1-2 only: no empty off-season posts.
+                schedule=events.Schedule.cron(minute="0", hour="22", month="1,2,9-12",
+                                              week_day="4", year="*"),
             )
-        )
+            rule.add_target(targets.LambdaFunction(gather))
 
-        cfnToAgwToLmb = CloudFrontToApiGatewayToLambda(
-            self,
-            'CloudFrontApiGatewayToLambda',
-            lambda_function_props=_lambda.FunctionProps(
-                # TODO: Add description
-                runtime=_lambda.Runtime.PYTHON_3_11,
-                code=_lambda.Code.from_asset(
-                    'lambda/gather_odds',
-                    exclude=['.envrc', 'games.json']
-                ),
-                handler='gather.lambda_handler',
-                layers=[self.create_dependencies_layer('lambda/gather_odds', 'gather')],
-                role=mfl_odds_lambda_role,
-                timeout=Duration.seconds(8),
-                environment={
-                    'SECRET_ARN': mfl_odds_secret.attr_id,
-                    'POSTER_LAMBDA_ARN': AgwToLmb.lambda_function.function_arn
-                }
-            ),
-            # NOTE - we use RestApiProps here because the actual type,
-            # LambdaRestApiProps requires the handler function which does
-            # not yet exist. As RestApiProps is a subset of of
-            # LambdaRestApiProps (although does not *extend* that interface)
-            # this works fine when the props object reaches the
-            # underlying TypeScript code that implements Constructs
-            api_gateway_props=apigw.RestApiProps(
-                default_method_options=apigw.MethodOptions(
-                    authorization_type=apigw.AuthorizationType.NONE
-                )
-            ),
-            # TODO: Set cache_policy on cloudfront distro to CacheDisabled = 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            # cloud_front_distribution_props=cloudfront.CfnDistributionProps(
-            #     distribution_config=cloudfront.CfnDistribution.DistributionConfigProperty(
-            #         enabled=True,
-            #         default_cache_behavior=cloudfront.CfnDistribution.DefaultCacheBehaviorProperty(
-            #             target_origin_id="targetOriginId",
-            #             viewer_protocol_policy="viewerProtocolPolicy",
-            #             cache_policy_id=cloudfront.CachePolicy.CACHING_DISABLED
-            #         )
-            #     )
-            # )
-        )
-
-        CfnOutput(self, 'CloudFrontDistributionDomainName',
-            value=cfnToAgwToLmb.cloud_front_web_distribution.domain_name
-        )
-
-        rule = events.Rule(
-            self,
-            "MyRule",
-            schedule=events.Schedule.cron(
-                # minute="59", hour="4", month="*", week_day="5", year="*")
-                minute="0", hour="1", month="*", week_day="5", year="*")
-                # 01:00 every Thursday UTC == 18:00 every Wednesday PT
-        )
-
-        # Set the Lambda function as the target of the rule
-        rule.add_target(targets.LambdaFunction(cfnToAgwToLmb.lambda_function))
-
-        events.RuleTargetConfig(
-            arn=cfnToAgwToLmb.lambda_function.function_arn,
-            role=mfl_odds_lambda_role
-        )
-
-    def create_dependencies_layer(
-        self,
-        project_name,
-        function_name: str) -> _lambda.LayerVersion:
-        requirements_file = "lambda/gather_odds/requirements.txt"  # 👈🏽 point to requirements.txt
-        output_dir = ".build/app"  # 👈🏽 a temp directory to store the dependencies
-
-        if not os.environ.get("SKIP_PIP"):
-            # 👇🏽 download the dependencies and store them in the output_dir
-            subprocess.check_call(
-                f"pip install -r {requirements_file} -t {output_dir}/python".split()
-            )
-
-        layer_id = f"{project_name}-{function_name}-dependencies"  # 👈🏽 a unique id for the layer
-        layer_code = _lambda.Code.from_asset(output_dir)  # 👈🏽 import the dependencies / code
-
-        my_layer = _lambda.LayerVersion(
-            self,
-            layer_id,
-            code=layer_code,
-        )
-
-        return my_layer
+        CfnOutput(self, "GatherFunctionName", value=gather.function_name)
+        CfnOutput(self, "PosterFunctionName", value=poster.function_name)

@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-import os
-
+"""CDK app: prod poster, test poster (MFL copy league), and the CI/OIDC stack."""
 import aws_cdk as cdk
 
-from mfl_odds_poster.mfl_odds_poster_stack import MflOddsPosterStack
+from mfl_odds_poster.ci_stack import MflOddsPosterCiStack
+from mfl_odds_poster.mfl_odds_poster_stack import MflOddsPosterStack, PROD_LEAGUE_ID
+
+TEST_LEAGUE_ID = "22744"
+GITHUB_REPO = "timkelsch/mfl-odds-poster"
 
 
-app = cdk.App()
-MflOddsPosterStack(app, "MflOddsPosterStack",
-    # If you don't specify 'env', this stack will be environment-agnostic.
-    # Account/Region-dependent features and context lookups will not work,
-    # but a single synthesized template can be deployed anywhere.
+def build_app(app: cdk.App) -> cdk.App:
+    """Add all stacks to ``app``.
 
-    # Uncomment the next line to specialize this stack for the AWS Account
-    # and Region that are implied by the current CLI configuration.
+    Args:
+        app: CDK app to populate.
 
-    #env=cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=os.getenv('CDK_DEFAULT_REGION')),
+    Returns:
+        cdk.App: The same app.
+    """
+    MflOddsPosterStack(app, "MflOddsPosterStack", env_name="prod", league_id=PROD_LEAGUE_ID)
+    MflOddsPosterStack(app, "MflOddsPosterStackTest", env_name="test", league_id=TEST_LEAGUE_ID)
+    MflOddsPosterCiStack(app, "MflOddsPosterCiStack", repo=GITHUB_REPO)
+    return app
 
-    # Uncomment the next line if you know exactly what Account and Region you
-    # want to deploy the stack to. */
 
-    #env=cdk.Environment(account='123456789012', region='us-east-1'),
-
-    # For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html
-    )
-
-app.synth()
+if __name__ == "__main__":
+    build_app(cdk.App()).synth()

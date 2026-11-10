@@ -1,120 +1,188 @@
-import boto3
+"""Post the weekly NFL odds summary to the MyFantasyLeague message board."""
 import datetime
 import json
 import logging
 import os
-import pprint
-import requests
-import sys
 import time
-import urllib.parse
-import sys
+
+import boto3
+import requests
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 MAX_RETRIES = 3
 SLEEP_SECONDS = 3
-MFL_LOGIN_URL = "https://api.myfantasyleague.com/2024/login?"
-ENV_VAR_SECRET_ARN = "SECRET_ARN"
-SUBSECRET_KEY_THEODDS_API_KEY = "the-odds-api-key"
+REQUEST_TIMEOUT_SECONDS = 5
+MFL_API_HOST = "https://api.myfantasyleague.com"
+ENV_VAR_CONFIG_PARAMETER = "CONFIG_PARAMETER_NAME"
+ENV_VAR_LEAGUE_ID = "LEAGUE_ID"
+ENV_VAR_FRANCHISE_ID = "FRANCHISE_ID"
 # checkov:skip=CKV_SECRET_6: not a secret
 NFL_API_URL = "https://nfl-football-api.p.rapidapi.com/nfl-whitelist"
-SUBSECRET_KEY_NFL_API_API_KEY = "nfl-api-key"
+NFL_API_HOST = "nfl-football-api.p.rapidapi.com"
+CONFIG_KEY_NFL_API_API_KEY = "nfl-api-key"
 
 MFL_USER_COOKIE_KEY = "MFL_USER_ID"
 REQUEST_TYPE = "messageBoard"
-YEAR = datetime.date.today().year
 API = "import"
-LEAGUE_ID = "15781"
-FRANCHISE_ID = "0008"
-# SUBJECT = ""
 THREAD = ""  # "6480193" == test thread
 
 
-def lambda_handler(event, context):
-    cookie = login()
-    logger.info(f"cookie: {cookie}")
-    host = get_host()
+def get_season_year(today: datetime.date | None = None) -> int:
+    """Return the NFL season year for a date.
+
+    January and February (playoffs, Super Bowl) belong to the season that
+    started the previous autumn, and MFL keys leagues by that season year.
+
+    Args:
+        today: Date to evaluate. Defaults to the current local date.
+
+    Returns:
+        int: Season year.
+    """
+    today = today or datetime.date.today()
+    return today.year - 1 if today.month < 3 else today.year
+
+
+YEAR = get_season_year()
+
+
+def lambda_handler(event: dict, _context: object) -> dict:
+    """Log in to MFL and post the odds body carried in the event.
+
+    Args:
+        event: Payload from the gather lambda, ``{"body": {"body": "<html>"}}``.
+        _context: Lambda context (unused).
+
+    Returns:
+        dict: ``statusCode`` and the MFL response text.
+
+    Raises:
+        ValueError: If the event does not carry an odds body.
+        KeyError: If ``LEAGUE_ID`` or ``FRANCHISE_ID`` is not set. There is
+            deliberately no default, so a misconfigured stack cannot post to
+            the prod league.
+        RuntimeError: If MFL login, host lookup, or the post itself fails.
+    """
     try:
-        body = event['body']['body']
-    except KeyError as e:
-        logging.error(f"ERROR: Cannot retrieve data from calling lambda event:\n{e}")
+        body = event["body"]["body"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("Event is missing ['body']['body'] from the gather lambda") from exc
+
+    league_id = get_env_var(ENV_VAR_LEAGUE_ID)
+    franchise_id = get_env_var(ENV_VAR_FRANCHISE_ID)
+    logger.info("Posting to league %s as franchise %s", league_id, franchise_id)
+
+    cookie = login()
+    host = get_host(league_id)
 
     first_day_regular_season = get_current_nfl_season_first_day()
-    week_1_start_date, week_1_end_date = get_week_start_end(first_day_regular_season)
+    week_1_start_date, _ = get_week_start_end(first_day_regular_season)
     week = get_current_nfl_week(week_1_start_date, datetime.datetime.now(datetime.timezone.utc))
     subject = f"Week {week}: Three-Leg Parlay"
-    logger.info(f"subject: {subject}")
+    logger.info("subject: %s", subject)
 
-    query_object = build_query_object(REQUEST_TYPE, LEAGUE_ID, FRANCHISE_ID, THREAD, subject, body)
+    query_object = build_query_object(REQUEST_TYPE, league_id, franchise_id, THREAD, subject, body)
     response = build_http_get_request(f"{host}/{YEAR}/{API}", cookie, query_object)
-    pretty_print_response(response)
+    return {"statusCode": response.status_code, "body": response.text}
 
 
-def get_current_nfl_week(first_game_date, input_date):
-  """
-  Calculates the NFL week number based on the input date and the first game date.
+def get_current_nfl_week(first_game_date: datetime.datetime, input_date: datetime.datetime) -> int:
+    """Calculate the NFL week number for a date.
 
-  Args:
-    input_date: The input date as a datetime.date object.
-    first_game_date: The date of the first regular season game as a datetime.date object.
+    Args:
+        first_game_date: Start of Week 1 (already normalized to its Tuesday).
+        input_date: Date to classify.
 
-  Returns:
-    The NFL week number.
-  """
-
-  # Calculate the difference in days between the input date and the first game date
-  days_since_first_game = (input_date - first_game_date).days
-  logger.info(f"days_since_first_game: {days_since_first_game}")
-  # Calculate the NFL week number (assuming Tuesday starts the week)
-  nfl_week = days_since_first_game // 7 + 1
-
-  return nfl_week
-
-
-def get_current_nfl_season_first_day():
-    secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
-    api_key = get_secret(secret_arn, SUBSECRET_KEY_NFL_API_API_KEY)
-    headers = {
-        "rapidapi-host": "nfl-football-api.p.rapidapi.com",
-        "rapidapi-key": api_key
-    }
-    response = requests.get(NFL_API_URL, headers=headers)
-    response.raise_for_status()
-
-    try:
-        data = json.loads(response.text)
-    except json.JSONDecodeError:
-        data = response.text  # If the response is not JSON, return the text as is
-        
-    startDate = ""
-    try:
-        # Iterate through the "sections" list
-        for section in data["sections"]:
-            # Check if the section is "Regular Season"
-            if section["label"] == "Regular Season":
-                # Iterate through the "entries" list within the section
-                for entry in section["entries"]:
-                    # Check if the entry is Week 1
-                    if entry["label"] == "Week 1":
-                        # Return the start date
-                        startDate = entry["startDate"]
-    except KeyError as e:
-        logger.error(f"Error parsing NFL API response: {e}")
-        sys.exit(1)
-
-    datetime_startDate = datetime.datetime.fromisoformat(startDate)
-
-    logger.info(f"datetime_startDate: {datetime_startDate}")
-    return datetime_startDate
-
-
-def get_week_start_end(date, week_start=1):
+    Returns:
+        int: NFL week number, 1-based.
     """
-    This is going to be in UTC meaning that start will be 5pm PT (UTC midnight)
-    monday night which is okay because this will run on Wednesday evening via cron
-    and we're only using this to determine what NFL week we're currently in.
+    days_since_first_game = (input_date - first_game_date).days
+    logger.info("days_since_first_game: %s", days_since_first_game)
+    return days_since_first_game // 7 + 1
+
+
+def get_default_season_first_day(season_year: int) -> datetime.datetime:
+    """Compute the regular-season kickoff without any external API.
+
+    Since 2002 the NFL has opened on the Thursday after Labor Day (the first
+    Monday of September). Occasional Wednesday openers (e.g. 2026) still fall
+    inside the same Tuesday-anchored Week 1 window.
+
+    Args:
+        season_year: NFL season year.
+
+    Returns:
+        datetime.datetime: Kickoff Thursday at 07:00 UTC (midnight Pacific).
+    """
+    sept_first = datetime.date(season_year, 9, 1)
+    labor_day = sept_first + datetime.timedelta(days=(7 - sept_first.weekday()) % 7)
+    kickoff = labor_day + datetime.timedelta(days=3)
+    return datetime.datetime(kickoff.year, kickoff.month, kickoff.day, 7, tzinfo=datetime.timezone.utc)
+
+
+def fetch_season_first_day_from_api() -> datetime.datetime:
+    """Fetch the regular-season Week 1 start date from the RapidAPI NFL schedule.
+
+    Returns:
+        datetime.datetime: Week 1 start date, timezone-aware.
+
+    Raises:
+        requests.RequestException: On network errors or non-2xx responses
+            (403 means the RapidAPI subscription is inactive).
+        ValueError: If the body is not JSON or lacks a Regular Season / Week 1 entry.
+    """
+    api_key = get_config(CONFIG_KEY_NFL_API_API_KEY)
+    headers = {"rapidapi-host": NFL_API_HOST, "rapidapi-key": api_key}
+    response = requests.get(NFL_API_URL, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    data = response.json()
+    for section in data.get("sections", []):
+        if section.get("label") != "Regular Season":
+            continue
+        for entry in section.get("entries", []):
+            if entry.get("label") == "Week 1":
+                return datetime.datetime.fromisoformat(entry["startDate"])
+    raise ValueError("NFL schedule API response has no Regular Season / Week 1 entry")
+
+
+def get_current_nfl_season_first_day() -> datetime.datetime:
+    """Return the current season's Week 1 start, preferring the schedule API.
+
+    Falls back to the computed Labor Day rule when the API is unreachable,
+    unsubscribed, malformed, or still serving a previous season.
+
+    Returns:
+        datetime.datetime: Week 1 start date, timezone-aware.
+    """
+    fallback = get_default_season_first_day(YEAR)
+    try:
+        api_date = fetch_season_first_day_from_api()
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        logger.warning("NFL schedule API unavailable (%s); using computed kickoff %s", exc, fallback.date())
+        return fallback
+    if api_date.year != YEAR:
+        logger.warning("NFL schedule API returned %s for season %s; using computed kickoff %s",
+                       api_date.date(), YEAR, fallback.date())
+        return fallback
+    logger.info("datetime_startDate: %s", api_date)
+    return api_date
+
+
+def get_week_start_end(date: datetime.datetime,
+                       week_start: int = 1) -> tuple[datetime.datetime, datetime.datetime]:
+    """Return the bounds of the NFL week containing ``date``.
+
+    Weeks are anchored on Tuesday (``week_start=1``) in whatever timezone
+    ``date`` carries. Only the start is used, to derive the week number.
+
+    Args:
+        date: Any datetime inside the week.
+        week_start: ``datetime.weekday()`` value that begins a week (0=Monday).
+
+    Returns:
+        tuple[datetime.datetime, datetime.datetime]: Week start (00:00) and end (23:59:59).
     """
     while date.weekday() != week_start:
         date -= datetime.timedelta(days=1)
@@ -126,8 +194,22 @@ def get_week_start_end(date, week_start=1):
     return week_start_date, week_end_date
 
 
-def build_query_object(request_type, league_id, franchise_id, thread, subject, body):
-    query_params = {
+def build_query_object(request_type: str, league_id: str, franchise_id: str,
+                       thread: str, subject: str, body: str) -> dict:
+    """Build the MFL ``import`` query parameters for a message-board post.
+
+    Args:
+        request_type: MFL import TYPE, e.g. ``messageBoard``.
+        league_id: MFL league id.
+        franchise_id: Posting franchise id.
+        thread: Existing thread id, or empty string for a new thread.
+        subject: Post subject.
+        body: Post body (HTML ``<br>`` line breaks).
+
+    Returns:
+        dict: Query parameters.
+    """
+    return {
         "TYPE": request_type,
         "L": league_id,
         "FRANCHISE_ID": franchise_id,
@@ -136,126 +218,142 @@ def build_query_object(request_type, league_id, franchise_id, thread, subject, b
         "BODY": body,
         "JSON": 1
     }
-    return query_params
 
 
-def get_secret(secret_name, subsecret_key):
-    """
-    Retrieve a secret from AWS Secrets Manager.
-
-    :param secret_name: Name of the secret to retrieve.
-    :type secret_name: str
-    """
-    try:
-        if not secret_name:
-            raise ValueError("Secret name must be provided.")
-
-        client = boto3.client("secretsmanager")
-        response = client.get_secret_value(SecretId=secret_name)
-        secret_string = response['SecretString']
-
-        # Note: Secrets should not be logged.
-        secret_data = json.loads(secret_string)
-        secret_value = secret_data[subsecret_key]
-        return secret_value
-    except Exception as e:
-        logging.error(f"Error retrieving secret: {e}")
-        raise
-
-
-def get_env_var(var_name):
-    """
-    Retrieve an environment variable.
-
-    :param var_name: Name of the environment variable.
-    :type var_name: str
-    """
-    try:
-        value = os.environ.get(var_name)
-        logger.info("Accessed environment variable")
-        return value
-    except KeyError:
-        logging.error(f"A required environment variable is not set.")
-        raise
-
-
-def login():
-    secret_arn = get_env_var(ENV_VAR_SECRET_ARN)
-    username = get_secret(secret_arn, 'mfl-username')
-    password = get_secret(secret_arn, 'mfl-password')
-    
-    url = MFL_LOGIN_URL
-    data = {"USERNAME": username, "PASSWORD": password, "XML": 1}
-
-    # Send POST request with HTTPS
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    
-    for attempt in range(1, MAX_RETRIES + 1):
-        response = requests.post(url, headers=headers, data=data, verify=True)
-        pretty_print_response(response)
-
-        if response.status_code == 200:
-            cookie_data = response.cookies.get_dict()
-            cookie_value = cookie_data[MFL_USER_COOKIE_KEY]
-            # print(f"cookie_value: {cookie_value}")
-            return cookie_value
-        else:
-            logging.error(f"Login attempt {attempt} failed with status code {response.status_code}. Retrying...")
-            time.sleep(SLEEP_SECONDS)
-
-    logger.error("ERROR: Maximum number of login attempts reached.")
-    sys.exit(1)
-
-
-def get_host():
-    url = "https://api.myfantasyleague.com/2024/export?TYPE=league&L=15781&JSON=1"
-    
-    try:
-        response = requests.get(url)
-        # TODO: Go back and integrate this baseURL with the rest of the project
-
-        data = response.json()  # Parse the JSON response
-        base_url = data["league"]["baseURL"]
-        if base_url:
-            return base_url
-    except Exception as e:
-        logger.error(f"ERROR: Cannot obtain API host. {e}")
-
-
-def pretty_print_response(response):
-    """
-    Pretty-prints a HTTP response object.
+def get_config(key: str) -> str:
+    """Read one key from the JSON SecureString named in ``CONFIG_PARAMETER_NAME``.
 
     Args:
-        response: The HTTP response object.
+        key: Key inside the JSON parameter value.
+
+    Returns:
+        str: The value. Never log it.
+
+    Raises:
+        KeyError: If ``CONFIG_PARAMETER_NAME`` is unset or ``key`` is missing.
+        botocore.exceptions.ClientError: If the parameter cannot be read.
     """
-
-    logger.info(f"URL: {response.url}")
-    logger.info(f"Status Code: {response.status_code}")
-    logger.info(f"Reason: {response.reason}")
-    logger.info(f"Request: {response.request}")
-    logger.info(f"Text: {response.text}")
-    logger.info(f"Content: {response.content}")
-    # logger.info(f"Headers:")
-    # pprint.pprint(dict(response.headers))
+    parameter_name = get_env_var(ENV_VAR_CONFIG_PARAMETER)
+    response = boto3.client("ssm").get_parameter(Name=parameter_name, WithDecryption=True)
+    return json.loads(response["Parameter"]["Value"])[key]
 
 
-def build_http_get_request(base_url, cookie, query_params):
-    url = f"{base_url}?"
-    logging.info(f"url: {url}")
-    cookies = { f"{MFL_USER_COOKIE_KEY}": f"{cookie}" }
+def get_env_var(var_name: str) -> str:
+    """Read a required environment variable.
+
+    Args:
+        var_name: Variable name.
+
+    Returns:
+        str: Variable value.
+
+    Raises:
+        KeyError: If the variable is not set.
+    """
+    value = os.environ.get(var_name)
+    if value is None:
+        raise KeyError(f"Required environment variable {var_name} is not set")
+    return value
+
+
+def login() -> str:
+    """Log in to MFL and return the session cookie value.
+
+    Returns:
+        str: ``MFL_USER_ID`` cookie value. Never log it.
+
+    Raises:
+        RuntimeError: If no attempt yields a 200 with a session cookie.
+    """
+    username = get_config("mfl-username")
+    password = get_config("mfl-password")
+
+    url = f"{MFL_API_HOST}/{YEAR}/login?"
+    data = {"USERNAME": username, "PASSWORD": password, "XML": 1}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     for attempt in range(1, MAX_RETRIES + 1):
-        response = requests.get(url, cookies=cookies, params=query_params, verify=True)
+        response = requests.post(url, headers=headers, data=data, timeout=REQUEST_TIMEOUT_SECONDS)
+        # Do not log the response body or cookies: they carry the session credential.
+        cookie_value = response.cookies.get(MFL_USER_COOKIE_KEY)
+        if response.status_code == 200 and cookie_value:
+            logger.info("MFL login succeeded on attempt %s", attempt)
+            return cookie_value
+        logger.error("Login attempt %s failed (HTTP %s, cookie present: %s). Retrying...",
+                     attempt, response.status_code, bool(cookie_value))
+        time.sleep(SLEEP_SECONDS)
+
+    raise RuntimeError(f"MFL login failed after {MAX_RETRIES} attempts")
+
+
+def get_host(league_id: str) -> str:
+    """Look up the league's API host for the current season.
+
+    MFL leagues live on a numbered host (``https://wwwNN.myfantasyleague.com``)
+    that can change between seasons.
+
+    Args:
+        league_id: MFL league id.
+
+    Returns:
+        str: League base URL.
+
+    Raises:
+        RuntimeError: If the league export fails or has no ``baseURL``.
+    """
+    url = f"{MFL_API_HOST}/{YEAR}/export?TYPE=league&L={league_id}&JSON=1"
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        base_url = response.json()["league"]["baseURL"]
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        raise RuntimeError(f"Cannot obtain MFL API host for league {league_id}, season {YEAR}") from exc
+    if not base_url:
+        raise RuntimeError("MFL league export returned an empty baseURL")
+    return base_url
+
+
+def pretty_print_response(response: requests.Response) -> None:
+    """Log the interesting parts of an HTTP response.
+
+    Args:
+        response: Response to log. Must not be a login response (cookie).
+    """
+    logger.info("URL: %s", response.url)
+    logger.info("Status Code: %s", response.status_code)
+    logger.info("Reason: %s", response.reason)
+    logger.info("Text: %s", response.text)
+
+
+def build_http_get_request(base_url: str, cookie: str, query_params: dict) -> requests.Response:
+    """Post to the MFL message board, retrying on non-200 responses.
+
+    Args:
+        base_url: ``{host}/{year}/import``.
+        cookie: ``MFL_USER_ID`` session cookie value.
+        query_params: Output of :func:`build_query_object`.
+
+    Returns:
+        requests.Response: The successful response.
+
+    Raises:
+        RuntimeError: If MFL rejects the post (200 with an ``<error>`` body,
+            e.g. "Invalid League ID") or every attempt fails.
+    """
+    url = f"{base_url}?"
+    cookies = {MFL_USER_COOKIE_KEY: cookie}
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        response = requests.get(url, cookies=cookies, params=query_params, timeout=REQUEST_TIMEOUT_SECONDS)
         logger.info("***MAIN REQUEST***")
         pretty_print_response(response)
 
         if response.status_code == 200:
+            if "<error>" in response.text:
+                raise RuntimeError(f"MFL rejected the post: {response.text.strip()[:200]}")
             return response
-        else:
-            logging.error(f"Attempt #{attempt} to post to messageBoard failed with status code {response.status_code}. Retrying...")
-            time.sleep(SLEEP_SECONDS)
+        logger.error("Attempt #%s to post to messageBoard failed with status code %s. Retrying...",
+                     attempt, response.status_code)
+        time.sleep(SLEEP_SECONDS)
 
-    logger.error("ERROR: Maximum number of attempts to post to messageBoard reached. Exiting.")
-    sys.exit(1)
-
+    raise RuntimeError(f"Posting to the MFL messageBoard failed after {MAX_RETRIES} attempts")

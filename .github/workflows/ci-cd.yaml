@@ -13,7 +13,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  CDK_VERSION: "2.1146.1"
+  CDK_VERSION: "2.1148.0"
 
 jobs:
   test:

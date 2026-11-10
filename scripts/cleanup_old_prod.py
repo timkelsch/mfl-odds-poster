@@ -25,7 +25,6 @@ PROD_STACK = "MflOddsPosterStack"
 REPO = "timkelsch/mfl-odds-poster"
 SUPERSEDING_PR = 11
 STALE_DEPENDABOT_PRS = (4, 5, 9, 10)
-OLD_SECRET = "mflOdds-ApiKey"
 OLD_BUCKET_PREFIX = "mfloddsposterstack-cloudfrontapigatewaytolambdaclo-"
 OLD_RESOURCE_TYPES = {
     "AWS::CloudFront::Distribution",
@@ -117,7 +116,7 @@ def main() -> int:
     args = parser.parse_args()
 
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
-    cfn, s3, logs, sm = (session.client(s) for s in ("cloudformation", "s3", "logs", "secretsmanager"))
+    cfn, s3, logs = (session.client(s) for s in ("cloudformation", "s3", "logs"))
 
     stack = cfn.describe_stacks(StackName=PROD_STACK)["Stacks"][0]
     resources = [(r["ResourceType"], r["LogicalResourceId"])
@@ -140,12 +139,6 @@ def main() -> int:
         if info["state"] == "OPEN" and info["author"]["login"] == "app/dependabot":
             prs.append(number)
 
-    try:
-        secret = sm.describe_secret(SecretId=OLD_SECRET)
-        secret_note = f"still exists (deleted date: {secret.get('DeletedDate', 'none')}) - not touched"
-    except sm.exceptions.ResourceNotFoundException:
-        secret_note = "already deleted by the prod deploy"
-
     mode = "APPLY" if args.apply else "DRY RUN (add --apply to delete)"
     print(f"== {mode}  profile={args.profile}")
     print(f"S3 buckets to empty + delete ({len(buckets)}):", *buckets, sep="\n  ")
@@ -153,7 +146,6 @@ def main() -> int:
     print(f"Dependabot PRs to close ({len(prs)}):", *prs, sep="\n  ")
     if pr["state"] != "MERGED":
         print(f"  (skipped: PR #{SUPERSEDING_PR} is {pr['state']}, not MERGED)")
-    print(f"Old secret {OLD_SECRET}: {secret_note}")
 
     if not args.apply:
         return 0

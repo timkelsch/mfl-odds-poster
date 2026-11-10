@@ -86,3 +86,15 @@ def test_workflow_assumes_the_fixed_role_without_repo_variables() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/ci-cd.yaml").read_text()
     assert "vars.AWS_ROLE_ARN" not in workflow
     assert workflow.count("role-to-assume: arn:aws:iam::287140326780:role/mfl-odds-poster-ci") == 2
+
+
+def test_workflow_actions_are_on_node24_majors() -> None:
+    """Node 20 actions are deprecated on GitHub runners; pin the Node 24 majors."""
+    import re
+    workflow = (Path(__file__).parents[2] / ".github/workflows/ci-cd.yaml").read_text()
+    minimum = {"actions/checkout": 7, "actions/setup-python": 7, "actions/setup-node": 7,
+               "aws-actions/configure-aws-credentials": 6}
+    uses = re.findall(r"uses:\s*([\w./-]+)@v(\d+)", workflow)
+    assert uses
+    for action, major in uses:
+        assert int(major) >= minimum[action], f"{action}@v{major} is below v{minimum[action]}"

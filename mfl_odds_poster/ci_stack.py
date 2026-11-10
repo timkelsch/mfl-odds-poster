@@ -4,7 +4,7 @@ from constructs import Construct
 
 GITHUB_OIDC_URL = "https://token.actions.githubusercontent.com"
 TEST_STACK_NAME = "MflOddsPosterStackTest"
-TEST_PARAMETER = "mfl-odds/test"
+CONFIG_PARAMETER = "mfl-odds"  # shared login; same password as prod either way
 CI_ROLE_NAME = "mfl-odds-poster-ci"  # fixed so .github/workflows/ci-cd.yaml can hardcode the ARN
 
 
@@ -55,7 +55,7 @@ class MflOddsPosterCiStack(Stack):
         ))
         role.add_to_policy(iam.PolicyStatement(
             actions=["ssm:GetParameter"],
-            resources=[self.format_arn(service="ssm", resource="parameter", resource_name=TEST_PARAMETER)],
+            resources=[self.format_arn(service="ssm", resource="parameter", resource_name=CONFIG_PARAMETER)],
         ))
         role.add_to_policy(iam.PolicyStatement(
             actions=["cloudformation:DescribeStacks"],

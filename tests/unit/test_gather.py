@@ -141,7 +141,7 @@ def test_get_config_reads_decrypted_ssm_parameter(monkeypatch: pytest.MonkeyPatc
             calls.append(kwargs)
             return {"Parameter": {"Value": '{"the-odds-api-key": "abc"}'}}
 
-    monkeypatch.setenv("CONFIG_PARAMETER_NAME", "/mfl-odds/test")
+    monkeypatch.setenv("CONFIG_PARAMETER_NAME", "/mfl-odds")
     monkeypatch.setattr(gather.boto3, "client", lambda service: _FakeSsm())
     assert gather.get_config("the-odds-api-key") == "abc"
-    assert calls == [{"Name": "/mfl-odds/test", "WithDecryption": True}]
+    assert calls == [{"Name": "/mfl-odds", "WithDecryption": True}]

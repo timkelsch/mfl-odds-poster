@@ -43,9 +43,9 @@ to lambda and vice versa.
 
 # Config (SSM Parameter Store)
 
-Each stack reads one SecureString parameter (free `aws/ssm` key):
-`/mfl-odds/prod` for `MflOddsPosterStack` and `/mfl-odds/test` for `MflOddsPosterStackTest`.
-CloudFormation can't create SecureStrings, so create each one once by hand:
+Both stacks read one SecureString parameter, `/mfl-odds` (free `aws/ssm` key). Prod and the
+copy league are owned by the same MFL login, so there is one password in one place.
+CloudFormation can't create SecureStrings, so it's created once by hand:
 
 ```
 {
@@ -56,8 +56,6 @@ CloudFormation can't create SecureStrings, so create each one once by hand:
 }
 ```
 
-`/mfl-odds/test` holds the credentials of the MFL account that owns the copy league, not
-the prod login.
 
 # Stacks
 

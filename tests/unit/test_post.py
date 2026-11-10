@@ -194,10 +194,10 @@ class _FakeSsm:
 def test_get_config_reads_decrypted_ssm_parameter(monkeypatch: pytest.MonkeyPatch) -> None:
     """Config comes from the SecureString named in CONFIG_PARAMETER_NAME."""
     fake = _FakeSsm('{"mfl-username": "u", "mfl-password": "p"}')
-    monkeypatch.setenv("CONFIG_PARAMETER_NAME", "/mfl-odds/test")
+    monkeypatch.setenv("CONFIG_PARAMETER_NAME", "/mfl-odds")
     monkeypatch.setattr(post.boto3, "client", lambda service: fake if service == "ssm" else None)
     assert post.get_config("mfl-username") == "u"
-    assert fake.calls == [{"Name": "/mfl-odds/test", "WithDecryption": True}]
+    assert fake.calls == [{"Name": "/mfl-odds", "WithDecryption": True}]
 
 
 def test_get_config_requires_parameter_name(monkeypatch: pytest.MonkeyPatch) -> None:

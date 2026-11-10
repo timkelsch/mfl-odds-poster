@@ -2,7 +2,7 @@
 
 Run with ``pytest -m e2e`` after ``cdk deploy MflOddsPosterStackTest``. Needs AWS
 credentials that can read the test stack, invoke its lambdas and read
-``/mfl-odds/test`` (the CI OIDC role, or ``AWS_PROFILE=pmfl`` locally).
+``/mfl-odds`` (the CI OIDC role, or ``AWS_PROFILE=pmfl`` locally).
 
 Safety: this only ever targets ``MflOddsPosterStackTest`` and aborts before
 invoking anything unless the deployed poster is configured for league 22744.
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.e2e
 STACK_NAME = "MflOddsPosterStackTest"
 TEST_LEAGUE_ID = "22744"
 FRANCHISE_ID = "0008"
-CONFIG_PARAMETER = "/mfl-odds/test"
+CONFIG_PARAMETER = "/mfl-odds"
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 POLL_SECONDS = 60
 CLOCK_SKEW_SECONDS = 30

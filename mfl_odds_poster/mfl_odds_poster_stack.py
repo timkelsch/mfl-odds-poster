@@ -14,6 +14,8 @@ from constructs import Construct
 
 PROD_LEAGUE_ID = "15781"
 FRANCHISE_ID = "0008"
+# One MFL login owns both leagues, so prod and test share one parameter.
+CONFIG_PARAMETER = "/mfl-odds"
 RUNTIME = _lambda.Runtime.PYTHON_3_11
 ARCHITECTURE = _lambda.Architecture.ARM_64
 
@@ -60,7 +62,7 @@ class MflOddsPosterStack(Stack):
             raise ValueError(f"{env_name} stack must never target the prod league {PROD_LEAGUE_ID}")
         super().__init__(scope, construct_id, **kwargs)
 
-        parameter_name = f"/mfl-odds/{env_name}"
+        parameter_name = CONFIG_PARAMETER
         # SecureString parameters cannot be created by CloudFormation; created once by hand.
         parameter_arn = self.format_arn(service="ssm", resource="parameter",
                                         resource_name=parameter_name.lstrip("/"))

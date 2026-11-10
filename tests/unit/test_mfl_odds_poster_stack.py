@@ -91,12 +91,12 @@ def test_log_groups_expire_after_30_days(fixture: str, request: pytest.FixtureRe
 
 
 @pytest.mark.parametrize("fixture, league, parameter", [
-    ("prod", "15781", "/mfl-odds/prod"),
-    ("test_stack", "22744", "/mfl-odds/test"),
+    ("prod", "15781", "/mfl-odds"),
+    ("test_stack", "22744", "/mfl-odds"),
 ])
 def test_poster_env_targets_its_own_league_and_config(fixture: str, league: str, parameter: str,
                                                       request: pytest.FixtureRequest) -> None:
-    """Each stack posts to its own league and reads its own SSM parameter."""
+    """Each stack posts to its own league; both read the one shared login parameter."""
     functions = _functions(request.getfixturevalue(fixture))
     poster_env = functions[POSTER]["Environment"]["Variables"]
     assert poster_env["LEAGUE_ID"] == league
@@ -105,8 +105,8 @@ def test_poster_env_targets_its_own_league_and_config(fixture: str, league: str,
     assert functions[GATHER]["Environment"]["Variables"]["CONFIG_PARAMETER_NAME"] == parameter
 
 
-def test_lambdas_can_read_only_their_own_parameter(test_stack: assertions.Template) -> None:
-    """Each lambda role may read /mfl-odds/test and nothing else in SSM."""
+def test_lambdas_can_read_only_the_config_parameter(test_stack: assertions.Template) -> None:
+    """Each lambda role may read /mfl-odds and nothing else in SSM."""
     statements = [
         stmt
         for policy in test_stack.find_resources("AWS::IAM::Policy").values()
@@ -116,8 +116,8 @@ def test_lambdas_can_read_only_their_own_parameter(test_stack: assertions.Templa
     assert len(statements) == 2
     for stmt in statements:
         rendered = str(stmt["Resource"])
-        assert "parameter/mfl-odds/test" in rendered
-        assert "prod" not in rendered
+        assert "parameter/mfl-odds" in rendered
+        assert "parameter/mfl-odds/" not in rendered
 
 
 def test_function_names_are_exported_for_e2e(test_stack: assertions.Template) -> None:

@@ -62,12 +62,11 @@ def test_role_can_assume_cdk_bootstrap_roles(template: assertions.Template) -> N
 
 
 def test_role_reaches_only_test_stack_runtime_resources(template: assertions.Template) -> None:
-    """Invoke/read is scoped to the test stack and the test parameter, never prod."""
+    """Invoke/read is scoped to the test stack and the shared login parameter, never prod lambdas."""
     rendered = json.dumps([s for s in _statements(template) if "sts:AssumeRole" not in _actions(s)])
     assert "function:MflOddsPosterStackTest-*" in rendered
-    assert "parameter/mfl-odds/test" in rendered
+    assert "parameter/mfl-odds\"" in rendered
     assert "stack/MflOddsPosterStackTest/*" in rendered
-    assert "mfl-odds/prod" not in rendered
     assert "function:MflOddsPosterStack-" not in rendered
 
 
